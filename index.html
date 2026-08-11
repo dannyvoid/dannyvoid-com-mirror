@@ -5,24 +5,12 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     
-    <!-- Disable Cloudflare auto-inject features globally -->
+    <!-- Loading screen timeout - hide after max 1 second regardless of load state -->
     <script>
-      // Disable Cloudflare Web Analytics beacon (causes 10s delay when blocked by ad blockers)
-      window.__cfBeacon = { load: function() {}, track: function() {} };
-      window.addEventListener('error', function(e) {
-        // Silently handle Cloudflare beacon failures
-        if (e.target && e.target.src && e.target.src.includes('cloudflareinsights.com')) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      }, true);
-      
-      // Loading screen timeout - hide after max 1 second regardless of load state
-      // This MUST run inline to avoid defer/async delays
+      // MUST run inline to avoid defer/async delays
       setTimeout(function() {
         var loadingScreen = document.querySelector('.loading-screen');
         if (loadingScreen && !loadingScreen.classList.contains('loaded')) {
-          console.log('️ Loading screen force-hidden after timeout');
           loadingScreen.classList.add('loaded');
           document.documentElement.style.scrollBehavior = 'smooth';
           setTimeout(function() {
