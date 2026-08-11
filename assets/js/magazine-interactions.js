@@ -1477,21 +1477,57 @@
     }, { passive: true });
   }
 
-  // Cursor following effect for portfolio items - soft dithered VIEW cursor (no hard border)
-  if (window.innerWidth > 768 && ditherEnabled) {
+  // Cursor following effect - soft dithered action cursor (no hard border)
+  // Keep JS + cursor:none CSS in sync via matchMedia so a resize can't show both.
+  {
+    const cursorMq = window.matchMedia('(min-width: 769px)');
+    const useDitherCursor = !prefersReducedMotion;
+    let cursorEnabled = cursorMq.matches;
+
     const cursor = document.createElement('div');
     cursor.className = 'custom-cursor';
-    cursor.innerHTML = '<canvas class="custom-cursor-dither" width="12" height="12" aria-hidden="true"></canvas><span>VIEW</span>';
+    if (useDitherCursor) {
+      cursor.innerHTML = '<canvas class="custom-cursor-dither" width="12" height="12" aria-hidden="true"></canvas><span>VIEW</span>';
+    } else {
+      cursor.textContent = 'VIEW';
+    }
     document.body.appendChild(cursor);
 
-    const cursorCanvas = cursor.querySelector('canvas');
-    const cursorCtx = cursorCanvas.getContext('2d', { alpha: true });
+    const cursorLabel = useDitherCursor ? cursor.querySelector('span') : cursor;
+    const cursorCanvas = useDitherCursor ? cursor.querySelector('canvas') : null;
+    const cursorCtx = cursorCanvas ? cursorCanvas.getContext('2d', { alpha: true }) : null;
     let cursorFrame = 0;
     let cursorRaf = null;
     let cursorActive = false;
 
+    function getCursorTarget(el) {
+      if (!el || !el.closest) return null;
+      return el.closest('[data-cursor], .portfolio-item');
+    }
+
+    function getCursorLabel(target) {
+      if (!target) return 'VIEW';
+      const label = target.getAttribute('data-cursor');
+      return label && label.trim() ? label.trim().toUpperCase() : 'VIEW';
+    }
+
+    function setCursorLabel(label) {
+      if (cursorLabel.textContent !== label) cursorLabel.textContent = label;
+    }
+
+    function deactivateCursor() {
+      cursor.classList.remove('active');
+      cursorActive = false;
+    }
+
+    function syncCursorMode() {
+      cursorEnabled = cursorMq.matches;
+      document.documentElement.classList.toggle('has-action-cursor', cursorEnabled);
+      if (!cursorEnabled) deactivateCursor();
+    }
+
     function paintCursor(time) {
-      if (!cursorActive) {
+      if (!cursorActive || !cursorEnabled || !cursorCtx) {
         cursorRaf = null;
         return;
       }
@@ -1561,13 +1597,13 @@
       }
       cursorRaf = requestAnimationFrame(paintCursor);
     }
-    
+
     if (document.getElementById('cursor-styles')) {
       document.getElementById('cursor-styles').remove();
     }
     const style = document.createElement('style');
     style.id = 'cursor-styles';
-    style.textContent = `
+    style.textContent = useDitherCursor ? `
         .custom-cursor {
           position: fixed;
           width: 72px;
@@ -1616,39 +1652,7 @@
           opacity: 1;
           transform: translate(-50%, -50%) scale(1);
         }
-      `;
-    document.head.appendChild(style);
-    
-    document.addEventListener('mouseenter', (e) => {
-      if (e.target.closest('.portfolio-item')) {
-        cursor.classList.add('active');
-        cursorActive = true;
-        if (!cursorRaf) cursorRaf = requestAnimationFrame(paintCursor);
-      }
-    }, true);
-    
-    document.addEventListener('mouseleave', (e) => {
-      if (e.target.closest('.portfolio-item')) {
-        cursor.classList.remove('active');
-        cursorActive = false;
-      }
-    }, true);
-    
-    document.addEventListener('mousemove', (e) => {
-      if (e.target.closest('.portfolio-item')) {
-        cursor.style.left = e.clientX + 'px';
-        cursor.style.top = e.clientY + 'px';
-      }
-    });
-  } else if (window.innerWidth > 768) {
-    const cursor = document.createElement('div');
-    cursor.className = 'custom-cursor';
-    cursor.textContent = 'VIEW';
-    document.body.appendChild(cursor);
-    if (!document.getElementById('cursor-styles')) {
-      const style = document.createElement('style');
-      style.id = 'cursor-styles';
-      style.textContent = `
+      ` : `
         .custom-cursor {
           position: fixed;
           width: 60px;
@@ -1673,18 +1677,48 @@
           transform: translate(-50%, -50%) scale(1);
         }
       `;
-      document.head.appendChild(style);
+    document.head.appendChild(style);
+
+    syncCursorMode();
+    if (typeof cursorMq.addEventListener === 'function') {
+      cursorMq.addEventListener('change', syncCursorMode);
+    } else if (typeof cursorMq.addListener === 'function') {
+      cursorMq.addListener(syncCursorMode);
     }
+
     document.addEventListener('mouseenter', (e) => {
-      if (e.target.closest('.portfolio-item')) cursor.classList.add('active');
+      if (!cursorEnabled) return;
+      const target = getCursorTarget(e.target);
+      if (target) {
+        setCursorLabel(getCursorLabel(target));
+        cursor.classList.add('active');
+        cursorActive = true;
+        if (useDitherCursor && !cursorRaf) cursorRaf = requestAnimationFrame(paintCursor);
+      }
     }, true);
+
     document.addEventListener('mouseleave', (e) => {
-      if (e.target.closest('.portfolio-item')) cursor.classList.remove('active');
+      if (!cursorEnabled) return;
+      if (getCursorTarget(e.target)) deactivateCursor();
     }, true);
+
     document.addEventListener('mousemove', (e) => {
-      if (e.target.closest('.portfolio-item')) {
+      if (!cursorEnabled) {
+        if (cursorActive) deactivateCursor();
+        return;
+      }
+      const target = getCursorTarget(e.target);
+      if (target) {
+        setCursorLabel(getCursorLabel(target));
         cursor.style.left = e.clientX + 'px';
         cursor.style.top = e.clientY + 'px';
+        if (!cursor.classList.contains('active')) {
+          cursor.classList.add('active');
+          cursorActive = true;
+          if (useDitherCursor && !cursorRaf) cursorRaf = requestAnimationFrame(paintCursor);
+        }
+      } else if (cursorActive) {
+        deactivateCursor();
       }
     });
   }

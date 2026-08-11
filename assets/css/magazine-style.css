@@ -1996,10 +1996,11 @@ a.contact-tile:hover .tile-action {
   }
 }
 
-@media (min-width: 769px) {
-  .portfolio-item {
-    cursor: none;
-  }
+/* Custom action cursor: hide native cursor only while JS enables it
+   (html.has-action-cursor), so a narrow resize never shows both. */
+html.has-action-cursor .portfolio-item,
+html.has-action-cursor [data-cursor] {
+  cursor: none;
 }
 
 @media (max-width: 1100px) {
