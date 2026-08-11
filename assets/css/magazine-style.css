@@ -1004,11 +1004,13 @@ img {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--color-gray-400);
+  background: var(--color-accent);
+  opacity: 0.45;
 }
 
 .lastfm-card.playing .status-indicator {
   background: var(--color-accent);
+  opacity: 1;
 }
 
 .lastfm-track a {

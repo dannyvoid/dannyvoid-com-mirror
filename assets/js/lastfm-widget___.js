@@ -12,6 +12,8 @@ function getRecentTracksUrl() {
 }
 
 function displayMessage(message) {
+  // Remount wipes .lastfm-card-bg washes - force the next sync to repaint.
+  lastGradientArtUrl = "";
   lastFmContainer.html(message);
 }
 
@@ -709,7 +711,12 @@ async function syncCardBackground(artUrl) {
   const initial = getCardBackgroundEls();
   if (!initial) return;
 
-  if (!artUrl) {
+  let url = artUrl || "";
+  if (!url) {
+    url = cardArtUrl(initial.$card) || "";
+  }
+
+  if (!url) {
     lastGradientArtUrl = "";
     initial.$bg.children(".lastfm-card-bg-wash").css({
       opacity: "0",
@@ -719,8 +726,11 @@ async function syncCardBackground(artUrl) {
     return;
   }
 
-  // Same cover as last applied wash - keep the drifting layer alive (polls hit this a lot)
-  if (artUrl === lastGradientArtUrl) {
+  const activeImage = initial.$wash.css("background-image");
+  const washPainted = activeImage && activeImage !== "none";
+
+  // Same cover and wash still present - keep the drifting layer alive (polls hit this a lot)
+  if (url === lastGradientArtUrl && washPainted) {
     initial.$bg.css("opacity", "1");
     return;
   }
@@ -728,28 +738,28 @@ async function syncCardBackground(artUrl) {
   const token = ++gradientToken;
 
   try {
-    const gradient = await sampleAlbumGradient(artUrl);
+    const gradient = await sampleAlbumGradient(url);
     if (token !== gradientToken || !gradient) return;
 
     const live = getCardBackgroundEls();
     if (!live) return;
 
     const currentSrc = cardArtUrl(live.$card);
-    if (currentSrc && currentSrc !== artUrl) return;
+    if (currentSrc && currentSrc !== url) return;
 
     live.$bg.css("background-color", gradient.fallback);
     live.$bg.css("opacity", "1");
 
     const $active = live.$wash;
-    const activeImage = $active.css("background-image");
-    const hasActiveWash = activeImage && activeImage !== "none";
+    const liveActiveImage = $active.css("background-image");
+    const hasActiveWash = liveActiveImage && liveActiveImage !== "none";
 
     if (!hasActiveWash || prefersReducedMotion()) {
       live.$bg.children(".lastfm-card-bg-wash.is-leaving, .lastfm-card-bg-wash.is-incoming").remove();
       $active
         .removeClass("is-incoming is-leaving is-shown")
         .css({ backgroundImage: gradient.image, opacity: "1" });
-      lastGradientArtUrl = artUrl;
+      lastGradientArtUrl = url;
       return;
     }
 
@@ -779,16 +789,19 @@ async function syncCardBackground(artUrl) {
         .children(".lastfm-card-bg-wash.is-incoming")
         .removeClass("is-incoming is-shown")
         .css("opacity", "1");
-      lastGradientArtUrl = artUrl;
+      lastGradientArtUrl = url;
     }, GRADIENT_CROSSFADE_MS);
   } catch (err) {
     if (token !== gradientToken) return;
     const live = getCardBackgroundEls();
     if (!live) return;
-    const currentSrc = cardArtUrl(live.$card);
-    if (currentSrc && currentSrc !== artUrl) return;
-    live.$wash.css("background-image", "none");
-    live.$bg.css({ opacity: "0", backgroundColor: "" });
+    // Never fall back to bare grey/black - keep any wash already on the card
+    const keepImage = live.$wash.css("background-image");
+    if (keepImage && keepImage !== "none") {
+      live.$bg.css("opacity", "1");
+      return;
+    }
+    console.warn("Album gradient sample failed:", err);
   }
 }
 
@@ -1734,11 +1747,13 @@ async function applySpotifyPayload(payload) {
     const prevLabel = formatPreviousLine(payload.previous);
     const $prev = lastFmContainer.find(".lastfm-previous, .lastfm-lifetime").first();
     if ($prev.length && prevLabel) $prev.text(prevLabel).prop("hidden", false);
+    // Keep / repair art gradient regardless of play/pause
+    syncCardBackground(track.art_url || "");
   } else {
     spotifyTrackId = trackId;
     lastTrackIdentity = `spotify|${trackId}|${payload.is_playing ? 1 : 0}`;
     displayMessage(formatSpotifyMessage(payload));
-    if (track.art_url) syncCardBackground(track.art_url);
+    syncCardBackground(track.art_url || "");
     document.dispatchEvent(new CustomEvent("lastfm:updated"));
     document.dispatchEvent(new CustomEvent("lastfm:art-updated"));
     enrichSpotifyAside(track, payload.previous);
