@@ -1443,4 +1443,327 @@ function updatePage() {
   setInterval(updateLastFmData, sleepTime);
 }
 
-updatePage();
+/* --- Spotify preference (origin); Last.fm path unchanged on failure --- */
+
+const SPOTIFY_POLL_VISIBLE_MS = 2000;
+const SPOTIFY_POLL_HIDDEN_MS = 20000;
+const SPOTIFY_FETCH_TIMEOUT_MS = 1500;
+const SPOTIFY_PROGRESS_TICK_MS = 250;
+
+let musicSource = null; // "spotify" | "lastfm"
+let lastFmIntervalId = null;
+let spotifyPollTimer = null;
+let spotifyProgressTimer = null;
+let spotifyTrackId = "";
+let spotifySnap = null;
+let spotifyAsideKey = "";
+
+function stopLastFmPolling() {
+  if (lastFmIntervalId) {
+    clearInterval(lastFmIntervalId);
+    lastFmIntervalId = null;
+  }
+}
+
+function startLastFmPolling() {
+  if (lastFmIntervalId) return;
+  updateLastFmData();
+  lastFmIntervalId = setInterval(updateLastFmData, sleepTime);
+}
+
+function stopSpotifyProgressTimer() {
+  if (spotifyProgressTimer) {
+    clearInterval(spotifyProgressTimer);
+    spotifyProgressTimer = null;
+  }
+}
+
+function startSpotifyProgressTimer() {
+  if (spotifyProgressTimer) return;
+  spotifyProgressTimer = setInterval(applySpotifyProgressDom, SPOTIFY_PROGRESS_TICK_MS);
+}
+
+function stopSpotifyPollTimerOnly() {
+  if (spotifyPollTimer) {
+    clearTimeout(spotifyPollTimer);
+    spotifyPollTimer = null;
+  }
+}
+
+function stopSpotifyPolling() {
+  stopSpotifyPollTimerOnly();
+  stopSpotifyProgressTimer();
+}
+
+function scheduleSpotifyPoll() {
+  stopSpotifyPollTimerOnly();
+  const delay = document.hidden ? SPOTIFY_POLL_HIDDEN_MS : SPOTIFY_POLL_VISIBLE_MS;
+  spotifyPollTimer = setTimeout(async () => {
+    await tickSpotify();
+    scheduleSpotifyPoll();
+  }, delay);
+}
+
+function formatClock(ms) {
+  const total = Math.max(0, Math.floor(Number(ms) / 1000) || 0);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function artistsLabel(artists) {
+  if (Array.isArray(artists)) return artists.filter(Boolean).join(", ");
+  return String(artists || "");
+}
+
+function formatPreviousLine(previous) {
+  if (!previous || !previous.name) return "";
+  const who = artistsLabel(previous.artists);
+  return who ? `Last: ${who} - ${previous.name}` : `Last: ${previous.name}`;
+}
+
+function computeSpotifyProgress() {
+  if (!spotifySnap) return { progress: 0, duration: 0, pct: 0 };
+  const duration = Math.max(0, Number(spotifySnap.duration_ms) || 0);
+  let progress = Math.max(0, Number(spotifySnap.progress_ms) || 0);
+  if (spotifySnap.is_playing) {
+    progress += Math.max(0, Date.now() - (spotifySnap.fetched_at || Date.now()));
+  }
+  if (duration > 0) progress = Math.min(progress, duration);
+  const pct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
+  return { progress, duration, pct };
+}
+
+function applySpotifyProgressDom() {
+  const $card = lastFmContainer.find(".lastfm-card.spotify-live").not(".error");
+  if (!$card.length || !spotifySnap) return;
+  const { progress, duration, pct } = computeSpotifyProgress();
+  $card.find(".spotify-progress-fill").css("width", `${pct}%`);
+  $card.find(".spotify-elapsed").text(formatClock(progress));
+  $card.find(".spotify-duration").text(formatClock(duration));
+}
+
+async function fetchSpotifyNowPlaying() {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), SPOTIFY_FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch("/api/now-playing", {
+      signal: ctrl.signal,
+      cache: "no-store",
+      credentials: "same-origin"
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (_) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function formatSpotifyMessage(payload) {
+  const track = payload.track || {};
+  const songName = track.name || "";
+  const artistName = artistsLabel(track.artists);
+  const albumName = track.album || "";
+  const albumArt = track.art_url || "";
+  const trackUrl = track.url || "https://open.spotify.com";
+  const isPlaying = !!payload.is_playing;
+  const statusClass = isPlaying ? "playing" : "paused";
+  const statusText = isPlaying ? "Now Playing" : "Paused";
+  const safeName = escapeHtml(songName);
+  const safeArtist = escapeHtml(artistName);
+  const safeAlbum = escapeHtml(albumName);
+  const safeArt = escapeHtml(albumArt);
+  const safeUrl = escapeHtml(trackUrl);
+  const artKey = escapeHtml(
+    `${normalizeMusicText(artistName)}|${normalizeMusicText(songName)}`
+  );
+  const { progress, duration, pct } = (() => {
+    const durationMs = Number(payload.duration_ms) || Number(track.duration_ms) || 0;
+    let progressMs = Number(payload.progress_ms) || 0;
+    if (isPlaying && payload.fetched_at) {
+      progressMs += Math.max(0, Date.now() - payload.fetched_at);
+    }
+    if (durationMs > 0) progressMs = Math.min(progressMs, durationMs);
+    return {
+      progress: progressMs,
+      duration: durationMs,
+      pct: durationMs > 0 ? Math.min(100, (progressMs / durationMs) * 100) : 0
+    };
+  })();
+
+  return `
+        <div class="lastfm-card spotify-live ${statusClass}">
+            <div class="lastfm-card-bg" aria-hidden="true"><div class="lastfm-card-bg-wash"></div></div>
+            <div class="lastfm-artwork"${albumArt ? ` data-art-url="${safeArt}" data-art-for="${artKey}"` : ` data-art-for="${artKey}"`}>
+              ${
+                albumArt
+                  ? `<img class="lastfm-art-layer lastfm-art-front is-visible" src="${safeArt}" alt="${safeName}" decoding="async" fetchpriority="high" referrerpolicy="no-referrer" />
+              <img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
+                  : `<img class="lastfm-art-layer lastfm-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />
+              <img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
+              }
+              <canvas class="dither-overlay-canvas" aria-hidden="true"></canvas>
+            </div>
+            <div class="lastfm-content">
+                <div class="lastfm-main">
+                    <div class="lastfm-status">
+                        <span class="status-indicator"></span>
+                        <span class="status-text">${statusText}</span>
+                    </div>
+                    <div class="lastfm-track">
+                        <a href="${safeUrl}" target="_blank" rel="noopener" class="track-link">
+                            <div class="track-name" data-sound-hover>${safeName}</div>
+                            <div class="track-byline">
+                                <div class="track-artist">${safeArtist}</div>
+                                <div class="track-album"${albumName ? "" : " hidden"}>${safeAlbum}</div>
+                            </div>
+                        </a>
+                        <div class="lastfm-aside">
+                            <div class="lastfm-plays" hidden></div>
+                            <div class="lastfm-previous lastfm-lifetime" hidden></div>
+                        </div>
+                    </div>
+                    <div class="spotify-progress" aria-hidden="true">
+                        <div class="spotify-progress-track">
+                            <div class="spotify-progress-fill" style="width:${pct}%"></div>
+                        </div>
+                        <div class="spotify-progress-times">
+                            <span class="spotify-elapsed">${formatClock(progress)}</span>
+                            <span class="spotify-duration">${formatClock(duration)}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <a href="${safeUrl}" target="_blank" rel="noopener" class="lastfm-live" data-sound-hover>Data from Spotify</a>
+        </div>
+    `;
+}
+
+function patchSpotifyCardInPlace(payload) {
+  const $card = lastFmContainer.find(".lastfm-card.spotify-live").not(".error");
+  if (!$card.length) return false;
+
+  const track = payload.track || {};
+  const songName = track.name || "";
+  const artistName = artistsLabel(track.artists);
+  const albumName = track.album || "";
+  const isPlaying = !!payload.is_playing;
+
+  $card.toggleClass("playing", isPlaying).toggleClass("paused", !isPlaying);
+  $card.find(".status-text").text(isPlaying ? "Now Playing" : "Paused");
+  $card.find(".track-name").text(songName);
+  $card.find(".track-artist").text(artistName);
+  const $album = $card.find(".track-album");
+  if (albumName) $album.text(albumName).prop("hidden", false);
+  else $album.text("").prop("hidden", true);
+
+  const trackUrl = track.url || "https://open.spotify.com";
+  $card.find("a.track-link, a.lastfm-live").attr("href", trackUrl);
+  $card.find("a.lastfm-live").text("Data from Spotify");
+
+  applySpotifyProgressDom();
+  return true;
+}
+
+async function enrichSpotifyAside(track, previous) {
+  const artist = artistsLabel(track && track.artists);
+  const name = track && track.name;
+  const key = `${artist}|${name}`;
+  spotifyAsideKey = key;
+
+  const prevLabel = formatPreviousLine(previous);
+  const $prev = lastFmContainer.find(".lastfm-previous, .lastfm-lifetime").first();
+  if ($prev.length) {
+    if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
+    else $prev.text("").prop("hidden", true);
+  }
+
+  document.dispatchEvent(new CustomEvent("lastfm:updated"));
+
+  try {
+    const playcount = await fetchTrackUserPlaycount(artist, name).catch(() => "");
+    if (spotifyAsideKey !== key) return;
+    patchCardPlays(formatPlayCount(playcount));
+    document.dispatchEvent(new CustomEvent("lastfm:updated"));
+  } catch (err) {
+    console.warn("Spotify/Last.fm playcount enrich failed:", err);
+  }
+}
+
+function enterLastFmFallback() {
+  stopSpotifyProgressTimer();
+  spotifyTrackId = "";
+  spotifySnap = null;
+  spotifyAsideKey = "";
+  if (musicSource === "lastfm") return;
+  musicSource = "lastfm";
+  startLastFmPolling();
+}
+
+async function applySpotifyPayload(payload) {
+  const track = payload.track;
+  if (!track || !track.name) {
+    enterLastFmFallback();
+    return;
+  }
+
+  if (musicSource !== "spotify") {
+    stopLastFmPolling();
+    musicSource = "spotify";
+  }
+  startSpotifyProgressTimer();
+
+  const trackId = track.id || `${track.name}|${artistsLabel(track.artists)}`;
+  const trackChanged = trackId !== spotifyTrackId;
+
+  spotifySnap = {
+    progress_ms: Number(payload.progress_ms) || 0,
+    duration_ms: Number(payload.duration_ms) || Number(track.duration_ms) || 0,
+    fetched_at: Number(payload.fetched_at) || Date.now(),
+    is_playing: !!payload.is_playing
+  };
+
+  const hasCard = lastFmContainer.find(".lastfm-card.spotify-live").not(".error").length > 0;
+
+  if (hasCard && !trackChanged) {
+    patchSpotifyCardInPlace(payload);
+    const prevLabel = formatPreviousLine(payload.previous);
+    const $prev = lastFmContainer.find(".lastfm-previous, .lastfm-lifetime").first();
+    if ($prev.length && prevLabel) $prev.text(prevLabel).prop("hidden", false);
+  } else {
+    spotifyTrackId = trackId;
+    lastTrackIdentity = `spotify|${trackId}|${payload.is_playing ? 1 : 0}`;
+    displayMessage(formatSpotifyMessage(payload));
+    if (track.art_url) syncCardBackground(track.art_url);
+    document.dispatchEvent(new CustomEvent("lastfm:updated"));
+    document.dispatchEvent(new CustomEvent("lastfm:art-updated"));
+    enrichSpotifyAside(track, payload.previous);
+  }
+
+  applySpotifyProgressDom();
+}
+
+async function tickSpotify() {
+  const data = await fetchSpotifyNowPlaying();
+  if (!data || data.error || data.playing === false || !data.track) {
+    enterLastFmFallback();
+    return;
+  }
+  await applySpotifyPayload(data);
+}
+
+function startMusicWidget() {
+  tickSpotify().finally(() => {
+    scheduleSpotifyPoll();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) {
+      tickSpotify();
+      scheduleSpotifyPoll();
+    }
+  });
+}
+
+startMusicWidget();

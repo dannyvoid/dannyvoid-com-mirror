@@ -1078,7 +1078,8 @@ img {
 .track-album[hidden],
 .lastfm-time[hidden],
 .lastfm-plays[hidden],
-.lastfm-lifetime[hidden] {
+.lastfm-lifetime[hidden],
+.lastfm-previous[hidden] {
   display: none !important;
 }
 
@@ -1115,6 +1116,49 @@ img {
   opacity: 0.85;
   line-height: 1.35;
   white-space: nowrap;
+}
+
+.lastfm-previous {
+  text-transform: none;
+  letter-spacing: 0.04em;
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.spotify-progress {
+  margin-top: 0.85rem;
+  max-width: 28rem;
+}
+
+.spotify-progress-track {
+  height: 3px;
+  background: color-mix(in srgb, var(--color-gray-400) 35%, transparent);
+  overflow: hidden;
+}
+
+.spotify-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--color-accent);
+  transition: width 0.2s linear;
+}
+
+.spotify-progress-times {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.35rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: var(--color-gray-500);
+}
+
+.lastfm-card.spotify-live.paused .spotify-progress-fill {
+  transition: none;
 }
 
 /* ============================================
