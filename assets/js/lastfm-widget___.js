@@ -1620,18 +1620,20 @@ function formatSpotifyMessage(payload) {
                                 <div class="track-album"${albumName ? "" : " hidden"}>${safeAlbum}</div>
                             </div>
                         </a>
-                        <div class="lastfm-aside">
-                            <div class="lastfm-plays" hidden></div>
-                            <div class="lastfm-previous lastfm-lifetime" hidden></div>
-                        </div>
                     </div>
                     <div class="spotify-progress" aria-hidden="true">
                         <div class="spotify-progress-track">
                             <div class="spotify-progress-fill" style="width:${pct}%"></div>
                         </div>
-                        <div class="spotify-progress-times">
-                            <span class="spotify-elapsed">${formatClock(progress)}</span>
-                            <span class="spotify-duration">${formatClock(duration)}</span>
+                        <div class="spotify-progress-footer">
+                            <div class="spotify-progress-times">
+                                <span class="spotify-elapsed">${formatClock(progress)}</span>
+                                <span class="spotify-duration">${formatClock(duration)}</span>
+                            </div>
+                            <div class="lastfm-aside">
+                                <div class="lastfm-plays" hidden></div>
+                                <div class="lastfm-previous lastfm-lifetime" hidden></div>
+                            </div>
                         </div>
                     </div>
                 </div>

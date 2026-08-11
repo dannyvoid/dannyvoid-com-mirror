@@ -1130,12 +1130,15 @@ img {
 }
 
 .spotify-progress {
-  margin-top: 0.85rem;
-  max-width: 28rem;
+  margin-top: 0.35rem;
+  max-width: none;
+  width: 100%;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .spotify-progress-track {
-  height: 3px;
+  height: 2px;
   background: color-mix(in srgb, var(--color-gray-400) 35%, transparent);
   overflow: hidden;
 }
@@ -1147,14 +1150,91 @@ img {
   transition: width 0.2s linear;
 }
 
+.spotify-progress-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-top: 0.25rem;
+  min-width: 0;
+}
+
 .spotify-progress-times {
   display: flex;
-  justify-content: space-between;
-  margin-top: 0.35rem;
+  justify-content: flex-start;
+  gap: 0.65rem;
+  margin-top: 0;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   letter-spacing: 0.04em;
   color: var(--color-gray-500);
+  flex: 0 0 auto;
+  line-height: 1.2;
+}
+
+/* Keep Spotify chrome inside the original art-aligned card height (100px art). */
+.lastfm-card.spotify-live {
+  align-items: center;
+}
+
+.lastfm-card.spotify-live .lastfm-content {
+  max-height: 100px;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+
+.lastfm-card.spotify-live .lastfm-main {
+  max-height: 100px;
+  width: 100%;
+  min-height: 0;
+  gap: 0.15rem;
+  overflow: hidden;
+  justify-content: center;
+}
+
+.lastfm-card.spotify-live .lastfm-status {
+  font-size: 0.8125rem;
+  gap: 0.35rem 0.5rem;
+  line-height: 1.2;
+}
+
+.lastfm-card.spotify-live .status-indicator {
+  width: 8px;
+  height: 8px;
+}
+
+.lastfm-card.spotify-live .track-name {
+  margin-bottom: 0.1rem;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  -webkit-line-clamp: 1;
+}
+
+.lastfm-card.spotify-live .track-artist {
+  font-size: 1.125rem;
+}
+
+.lastfm-card.spotify-live .track-album {
+  font-size: 0.75rem;
+}
+
+.lastfm-card.spotify-live .spotify-progress-footer .lastfm-aside {
+  position: static;
+  max-width: min(16rem, 52%);
+  margin: 0;
+  pointer-events: none;
+  gap: 0.15rem;
+}
+
+.lastfm-card.spotify-live .lastfm-plays,
+.lastfm-card.spotify-live .lastfm-previous {
+  font-size: 0.6875rem;
+  line-height: 1.2;
+}
+
+.lastfm-card.spotify-live .lastfm-previous {
+  -webkit-line-clamp: 1;
 }
 
 .lastfm-card.spotify-live.paused .spotify-progress-fill {
@@ -2364,6 +2444,11 @@ html.is-narrow-layout .lastfm-track {
     flex-direction: column;
     align-items: flex-start;
     padding: 2rem;
+  }
+
+  .lastfm-card.spotify-live .lastfm-content,
+  .lastfm-card.spotify-live .lastfm-main {
+    max-height: none;
   }
 
   .lastfm-content {
