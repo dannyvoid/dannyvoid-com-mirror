@@ -44,6 +44,11 @@ body {
   overflow-x: hidden;
 }
 
+::selection {
+  background: var(--color-accent);
+  color: var(--color-black);
+}
+
 a {
   color: var(--color-white);
   text-decoration: none;
