@@ -2063,7 +2063,7 @@ async function tickLiveSources() {
     lastAbsPayload &&
     Date.now() - lastAbsOkAt <= ABS_CLIENT_STICKY_MS
   ) {
-    // Brief ABS miss/timeout — keep last book unless Spotify is actively playing.
+    // Brief ABS miss/timeout - keep last book unless Spotify is actively playing.
     absPayload = lastAbsPayload;
     absOk = true;
   } else if (!absOk) {
