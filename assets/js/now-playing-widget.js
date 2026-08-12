@@ -1071,8 +1071,8 @@ function patchCardPlays(playsLabel) {
 }
 
 function patchCardLifetime(lifetimeLabel) {
-  // Spotify reuses the footer slot for "Last: …" - never write account scrobbles there
-  if (musicSource === "spotify") return;
+  // Live origin cards reuse the footer slot for "Last: …" - never write account scrobbles there
+  if (isLiveOriginSource()) return;
   const $lifetime = nowPlayingContainer.find(".now-playing-lifetime");
   if (!$lifetime.length) return;
   if (lifetimeLabel) {
@@ -1083,7 +1083,7 @@ function patchCardLifetime(lifetimeLabel) {
 }
 
 async function enrichCardMeta(track) {
-  if (musicSource === "spotify") return;
+  if (isLiveOriginSource()) return;
   const identity = getTrackIdentity(track);
   const artist = getArtistName(track);
   const trackName = track && track.name;
@@ -1097,8 +1097,8 @@ async function enrichCardMeta(track) {
       fetchUserInfo().catch(() => null)
     ]);
 
-    // Drop stale Last.fm enrich once Spotify owns the card (or track changed)
-    if (musicSource === "spotify" || identity !== lastTrackIdentity) return;
+    // Drop stale Last.fm enrich once an origin live API owns the card (or track changed)
+    if (isLiveOriginSource() || identity !== lastTrackIdentity) return;
 
     patchCardPlays(formatPlayCount(playcount));
     patchCardLifetime(formatLifetimeLine(user));
@@ -1551,10 +1551,10 @@ let lastTrackIdentity = "";
 let lastFmUpdateSeq = 0;
 
 async function updateLastFmData() {
-  if (musicSource === "spotify") return;
+  if (isLiveOriginSource()) return;
   const seq = ++lastFmUpdateSeq;
   const recentTracks = await fetchLastFmData();
-  if (seq !== lastFmUpdateSeq || musicSource === "spotify") return;
+  if (seq !== lastFmUpdateSeq || isLiveOriginSource()) return;
 
   if (recentTracks.length === 0) {
     lastTrackIdentity = "";
@@ -1622,23 +1622,27 @@ function updatePage() {
   setInterval(updateLastFmData, sleepTime);
 }
 
-/* --- Spotify preference (origin); Last.fm path unchanged on failure --- */
+/* --- Origin live preference (ABS → Spotify); Last.fm path unchanged on failure --- */
 
-const SPOTIFY_POLL_VISIBLE_MS = 2000;
-const SPOTIFY_POLL_HIDDEN_MS = 20000;
-const SPOTIFY_FETCH_TIMEOUT_MS = 1500;
-const SPOTIFY_PROGRESS_TICK_MS = 250;
+const LIVE_POLL_VISIBLE_MS = 2000;
+const LIVE_POLL_HIDDEN_MS = 20000;
+const LIVE_FETCH_TIMEOUT_MS = 1500;
+const LIVE_PROGRESS_TICK_MS = 250;
 
-let musicSource = null; // "spotify" | "lastfm"
+let musicSource = null; // "audiobookshelf" | "spotify" | "lastfm"
 let lastFmIntervalId = null;
-let spotifyPollTimer = null;
-let spotifyProgressTimer = null;
-let spotifyTrackId = "";
-let spotifySnap = null;
+let livePollTimer = null;
+let liveProgressTimer = null;
+let liveTrackId = "";
+let liveSnap = null;
 let spotifyAsideKey = "";
 
+function isLiveOriginSource() {
+  return musicSource === "spotify" || musicSource === "audiobookshelf";
+}
+
 function stopLastFmPolling() {
-  // Invalidate in-flight Last.fm fetches so they cannot patch a Spotify card
+  // Invalidate in-flight Last.fm fetches so they cannot patch a live origin card
   lastFmUpdateSeq += 1;
   if (lastFmIntervalId) {
     clearInterval(lastFmIntervalId);
@@ -1652,36 +1656,36 @@ function startLastFmPolling() {
   lastFmIntervalId = setInterval(updateLastFmData, sleepTime);
 }
 
-function stopSpotifyProgressTimer() {
-  if (spotifyProgressTimer) {
-    clearInterval(spotifyProgressTimer);
-    spotifyProgressTimer = null;
+function stopLiveProgressTimer() {
+  if (liveProgressTimer) {
+    clearInterval(liveProgressTimer);
+    liveProgressTimer = null;
   }
 }
 
-function startSpotifyProgressTimer() {
-  if (spotifyProgressTimer) return;
-  spotifyProgressTimer = setInterval(applySpotifyProgressDom, SPOTIFY_PROGRESS_TICK_MS);
+function startLiveProgressTimer() {
+  if (liveProgressTimer) return;
+  liveProgressTimer = setInterval(applyLiveProgressDom, LIVE_PROGRESS_TICK_MS);
 }
 
-function stopSpotifyPollTimerOnly() {
-  if (spotifyPollTimer) {
-    clearTimeout(spotifyPollTimer);
-    spotifyPollTimer = null;
+function stopLivePollTimerOnly() {
+  if (livePollTimer) {
+    clearTimeout(livePollTimer);
+    livePollTimer = null;
   }
 }
 
-function stopSpotifyPolling() {
-  stopSpotifyPollTimerOnly();
-  stopSpotifyProgressTimer();
+function stopLivePolling() {
+  stopLivePollTimerOnly();
+  stopLiveProgressTimer();
 }
 
-function scheduleSpotifyPoll() {
-  stopSpotifyPollTimerOnly();
-  const delay = document.hidden ? SPOTIFY_POLL_HIDDEN_MS : SPOTIFY_POLL_VISIBLE_MS;
-  spotifyPollTimer = setTimeout(async () => {
-    await tickSpotify();
-    scheduleSpotifyPoll();
+function scheduleLivePoll() {
+  stopLivePollTimerOnly();
+  const delay = document.hidden ? LIVE_POLL_HIDDEN_MS : LIVE_POLL_VISIBLE_MS;
+  livePollTimer = setTimeout(async () => {
+    await tickLiveSources();
+    scheduleLivePoll();
   }, delay);
 }
 
@@ -1703,32 +1707,36 @@ function formatPreviousLine(previous) {
   return who ? `Last: ${who} - ${previous.name}` : `Last: ${previous.name}`;
 }
 
-function computeSpotifyProgress() {
-  if (!spotifySnap) return { progress: 0, duration: 0, pct: 0 };
-  const duration = Math.max(0, Number(spotifySnap.duration_ms) || 0);
-  let progress = Math.max(0, Number(spotifySnap.progress_ms) || 0);
-  if (spotifySnap.is_playing) {
-    progress += Math.max(0, Date.now() - (spotifySnap.fetched_at || Date.now()));
+function computeLiveProgress() {
+  if (!liveSnap) return { progress: 0, duration: 0, pct: 0 };
+  const duration = Math.max(0, Number(liveSnap.duration_ms) || 0);
+  let progress = Math.max(0, Number(liveSnap.progress_ms) || 0);
+  if (liveSnap.is_playing) {
+    progress += Math.max(0, Date.now() - (liveSnap.fetched_at || Date.now()));
   }
   if (duration > 0) progress = Math.min(progress, duration);
   const pct = duration > 0 ? Math.min(100, (progress / duration) * 100) : 0;
   return { progress, duration, pct };
 }
 
-function applySpotifyProgressDom() {
-  const $card = nowPlayingContainer.find(".now-playing-card.spotify-live").not(".error");
-  if (!$card.length || !spotifySnap) return;
-  const { progress, duration, pct } = computeSpotifyProgress();
+function liveCardSelector() {
+  return ".now-playing-card.spotify-live, .now-playing-card.audiobook-live";
+}
+
+function applyLiveProgressDom() {
+  const $card = nowPlayingContainer.find(liveCardSelector()).not(".error");
+  if (!$card.length || !liveSnap) return;
+  const { progress, duration, pct } = computeLiveProgress();
   $card.find(".spotify-progress-fill").css("width", `${pct}%`);
   $card.find(".spotify-elapsed").text(formatClock(progress));
   $card.find(".spotify-duration").text(formatClock(duration));
 }
 
-async function fetchSpotifyNowPlaying() {
+async function fetchJsonWithTimeout(url) {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), SPOTIFY_FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), LIVE_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch("/api/now-playing", {
+    const res = await fetch(url, {
       signal: ctrl.signal,
       cache: "no-store",
       credentials: "same-origin"
@@ -1742,16 +1750,35 @@ async function fetchSpotifyNowPlaying() {
   }
 }
 
-function formatSpotifyMessage(payload) {
+function fetchSpotifyNowPlaying() {
+  return fetchJsonWithTimeout("/api/now-playing");
+}
+
+function fetchAbsNowPlaying() {
+  return fetchJsonWithTimeout("/api/audiobooks/now-playing");
+}
+
+function isUsableLivePayload(payload) {
+  return !!(payload && !payload.error && payload.playing && payload.track && payload.track.name);
+}
+
+function formatLiveMessage(payload, opts) {
+  const options = opts || {};
+  const sourceClass = options.sourceClass || "spotify-live";
+  const statusPlaying = options.statusPlaying || "Now Playing";
+  const statusPaused = options.statusPaused || "Paused";
+  const attribution = options.attribution || "Data from Spotify";
+  const fallbackUrl = options.fallbackUrl || "https://open.spotify.com";
+
   const track = payload.track || {};
   const songName = track.name || "";
   const artistName = artistsLabel(track.artists);
   const albumName = track.album || "";
   const albumArt = track.art_url || "";
-  const trackUrl = track.url || "https://open.spotify.com";
+  const trackUrl = track.url || fallbackUrl;
   const isPlaying = !!payload.is_playing;
   const statusClass = isPlaying ? "playing" : "paused";
-  const statusText = isPlaying ? "Now Playing" : "Paused";
+  const statusText = isPlaying ? statusPlaying : statusPaused;
   const safeName = escapeHtml(songName);
   const safeArtist = escapeHtml(artistName);
   const safeAlbum = escapeHtml(albumName);
@@ -1775,7 +1802,7 @@ function formatSpotifyMessage(payload) {
   })();
 
   return `
-        <div class="now-playing-card spotify-live ${statusClass}">
+        <div class="now-playing-card ${sourceClass} ${statusClass}">
             <div class="now-playing-card-bg" aria-hidden="true"><div class="now-playing-card-bg-wash"></div></div>
             <div class="now-playing-artwork"${albumArt ? ` data-art-url="${safeArt}" data-art-for="${artKey}"` : ` data-art-for="${artKey}"`}>
               ${
@@ -1818,13 +1845,20 @@ function formatSpotifyMessage(payload) {
                     </div>
                 </div>
             </div>
-            <a href="${safeUrl}" target="_blank" rel="noopener" class="now-playing-live" data-sound-hover>Data from Spotify</a>
+            <a href="${safeUrl}" target="_blank" rel="noopener" class="now-playing-live" data-sound-hover>${escapeHtml(attribution)}</a>
         </div>
     `;
 }
 
-function patchSpotifyCardInPlace(payload) {
-  const $card = nowPlayingContainer.find(".now-playing-card.spotify-live").not(".error");
+function patchLiveCardInPlace(payload, opts) {
+  const options = opts || {};
+  const cardClass = options.cardClass || "spotify-live";
+  const statusPlaying = options.statusPlaying || "Now Playing";
+  const statusPaused = options.statusPaused || "Paused";
+  const attribution = options.attribution || "Data from Spotify";
+  const fallbackUrl = options.fallbackUrl || "https://open.spotify.com";
+
+  const $card = nowPlayingContainer.find(`.now-playing-card.${cardClass}`).not(".error");
   if (!$card.length) return false;
 
   const track = payload.track || {};
@@ -1834,18 +1868,18 @@ function patchSpotifyCardInPlace(payload) {
   const isPlaying = !!payload.is_playing;
 
   $card.toggleClass("playing", isPlaying).toggleClass("paused", !isPlaying);
-  $card.find(".status-text").text(isPlaying ? "Now Playing" : "Paused");
+  $card.find(".status-text").text(isPlaying ? statusPlaying : statusPaused);
   $card.find(".track-name").text(songName);
   $card.find(".track-artist").text(artistName);
   const $album = $card.find(".track-album");
   if (albumName) $album.text(albumName).prop("hidden", false);
   else $album.text("").prop("hidden", true);
 
-  const trackUrl = track.url || "https://open.spotify.com";
+  const trackUrl = track.url || fallbackUrl;
   $card.find("a.track-link, a.now-playing-live").attr("href", trackUrl);
-  $card.find("a.now-playing-live").text("Data from Spotify");
+  $card.find("a.now-playing-live").text(attribution);
 
-  applySpotifyProgressDom();
+  applyLiveProgressDom();
   return true;
 }
 
@@ -1886,14 +1920,69 @@ async function enrichSpotifyAside(track, previous, opts) {
 }
 
 function enterLastFmFallback() {
-  stopSpotifyProgressTimer();
-  spotifyTrackId = "";
-  spotifySnap = null;
+  stopLiveProgressTimer();
+  liveTrackId = "";
+  liveSnap = null;
   spotifyAsideKey = "";
   if (musicSource === "lastfm") return;
   musicSource = "lastfm";
   lastTrackIdentity = "";
   startLastFmPolling();
+}
+
+function setLiveSnap(payload) {
+  const track = payload.track || {};
+  liveSnap = {
+    progress_ms: Number(payload.progress_ms) || 0,
+    duration_ms: Number(payload.duration_ms) || Number(track.duration_ms) || 0,
+    fetched_at: Number(payload.fetched_at) || Date.now(),
+    is_playing: !!payload.is_playing
+  };
+}
+
+async function applyAbsPayload(payload) {
+  const track = payload.track;
+  if (!track || !track.name) {
+    enterLastFmFallback();
+    return;
+  }
+
+  if (musicSource !== "audiobookshelf") {
+    stopLastFmPolling();
+    musicSource = "audiobookshelf";
+    liveTrackId = "";
+  }
+  startLiveProgressTimer();
+  setLiveSnap(payload);
+
+  const trackId = track.id || `${track.name}|${artistsLabel(track.artists)}`;
+  const trackChanged = trackId !== liveTrackId;
+  const hasCard =
+    nowPlayingContainer.find(".now-playing-card.audiobook-live").not(".error").length > 0;
+
+  const absOpts = {
+    sourceClass: "audiobook-live",
+    cardClass: "audiobook-live",
+    statusPlaying: "Listening",
+    statusPaused: "Paused",
+    attribution: "Data from Audiobookshelf",
+    fallbackUrl: "https://audiobooks.dannyvoid.com"
+  };
+
+  if (hasCard && !trackChanged) {
+    patchLiveCardInPlace(payload, absOpts);
+    nowPlayingContainer.find(".now-playing-plays, .now-playing-previous").prop("hidden", true).text("");
+    syncCardBackground(track.art_url || "");
+  } else {
+    liveTrackId = trackId;
+    lastTrackIdentity = `audiobookshelf|${trackId}|${payload.is_playing ? 1 : 0}`;
+    displayMessage(formatLiveMessage(payload, absOpts));
+    syncCardBackground(track.art_url || "");
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
+  }
+
+  applyLiveProgressDom();
 }
 
 async function applySpotifyPayload(payload) {
@@ -1906,66 +1995,89 @@ async function applySpotifyPayload(payload) {
   if (musicSource !== "spotify") {
     stopLastFmPolling();
     musicSource = "spotify";
+    liveTrackId = "";
   }
-  startSpotifyProgressTimer();
+  startLiveProgressTimer();
+  setLiveSnap(payload);
 
   const trackId = track.id || `${track.name}|${artistsLabel(track.artists)}`;
-  const trackChanged = trackId !== spotifyTrackId;
-
-  spotifySnap = {
-    progress_ms: Number(payload.progress_ms) || 0,
-    duration_ms: Number(payload.duration_ms) || Number(track.duration_ms) || 0,
-    fetched_at: Number(payload.fetched_at) || Date.now(),
-    is_playing: !!payload.is_playing
-  };
-
-  const hasCard = nowPlayingContainer.find(".now-playing-card.spotify-live").not(".error").length > 0;
+  const trackChanged = trackId !== liveTrackId;
+  const hasCard =
+    nowPlayingContainer.find(".now-playing-card.spotify-live").not(".error").length > 0;
 
   if (hasCard && !trackChanged) {
-    patchSpotifyCardInPlace(payload);
+    patchLiveCardInPlace(payload, {
+      cardClass: "spotify-live",
+      attribution: "Data from Spotify"
+    });
     const prevLabel = formatPreviousLine(payload.previous);
     const $prev = nowPlayingContainer.find(".now-playing-previous").first();
     if ($prev.length) {
       if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
       else $prev.text("").prop("hidden", true);
     }
-    // Keep / repair art gradient regardless of play/pause
     syncCardBackground(track.art_url || "");
-    // Last.fm playcount is one-shot and can miss - retry while still empty
     enrichSpotifyAside(track, payload.previous, {
       playsOnly: true,
       retryPlays: true
     });
   } else {
-    spotifyTrackId = trackId;
+    liveTrackId = trackId;
     lastTrackIdentity = `spotify|${trackId}|${payload.is_playing ? 1 : 0}`;
-    displayMessage(formatSpotifyMessage(payload));
+    displayMessage(
+      formatLiveMessage(payload, {
+        sourceClass: "spotify-live",
+        attribution: "Data from Spotify"
+      })
+    );
     syncCardBackground(track.art_url || "");
     document.dispatchEvent(new CustomEvent("now-playing:updated"));
     document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
     enrichSpotifyAside(track, payload.previous);
   }
 
-  applySpotifyProgressDom();
+  applyLiveProgressDom();
 }
 
-async function tickSpotify() {
-  const data = await fetchSpotifyNowPlaying();
-  if (!data || data.error || data.playing === false || !data.track) {
-    enterLastFmFallback();
+async function tickLiveSources() {
+  const [abs, spotify] = await Promise.all([
+    fetchAbsNowPlaying(),
+    fetchSpotifyNowPlaying()
+  ]);
+
+  const absOk = isUsableLivePayload(abs);
+  const spotOk = isUsableLivePayload(spotify);
+  const absActive = absOk && !!abs.is_playing;
+  const spotActive = spotOk && !!spotify.is_playing;
+
+  // ABS active > Spotify active > ABS paused > Spotify paused/present > Last.fm
+  if (absActive) {
+    await applyAbsPayload(abs);
     return;
   }
-  await applySpotifyPayload(data);
+  if (spotActive) {
+    await applySpotifyPayload(spotify);
+    return;
+  }
+  if (absOk) {
+    await applyAbsPayload(abs);
+    return;
+  }
+  if (spotOk) {
+    await applySpotifyPayload(spotify);
+    return;
+  }
+  enterLastFmFallback();
 }
 
 function startMusicWidget() {
-  tickSpotify().finally(() => {
-    scheduleSpotifyPoll();
+  tickLiveSources().finally(() => {
+    scheduleLivePoll();
   });
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {
-      tickSpotify();
-      scheduleSpotifyPoll();
+      tickLiveSources();
+      scheduleLivePoll();
     }
   });
 }
