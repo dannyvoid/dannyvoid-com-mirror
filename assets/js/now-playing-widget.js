@@ -984,6 +984,8 @@ function patchCardPlays(playsLabel) {
 }
 
 function patchCardLifetime(lifetimeLabel) {
+  // Spotify reuses the footer slot for "Last: …" - never write account scrobbles there
+  if (musicSource === "spotify") return;
   const $lifetime = nowPlayingContainer.find(".now-playing-lifetime");
   if (!$lifetime.length) return;
   if (lifetimeLabel) {
@@ -994,6 +996,7 @@ function patchCardLifetime(lifetimeLabel) {
 }
 
 async function enrichCardMeta(track) {
+  if (musicSource === "spotify") return;
   const identity = getTrackIdentity(track);
   const artist = getArtistName(track);
   const trackName = track && track.name;
@@ -1007,7 +1010,8 @@ async function enrichCardMeta(track) {
       fetchUserInfo().catch(() => null)
     ]);
 
-    if (identity !== lastTrackIdentity) return;
+    // Drop stale Last.fm enrich once Spotify owns the card (or track changed)
+    if (musicSource === "spotify" || identity !== lastTrackIdentity) return;
 
     patchCardPlays(formatPlayCount(playcount));
     patchCardLifetime(formatLifetimeLine(user));
@@ -1460,9 +1464,10 @@ let lastTrackIdentity = "";
 let lastFmUpdateSeq = 0;
 
 async function updateLastFmData() {
+  if (musicSource === "spotify") return;
   const seq = ++lastFmUpdateSeq;
   const recentTracks = await fetchLastFmData();
-  if (seq !== lastFmUpdateSeq) return;
+  if (seq !== lastFmUpdateSeq || musicSource === "spotify") return;
 
   if (recentTracks.length === 0) {
     lastTrackIdentity = "";
@@ -1546,6 +1551,8 @@ let spotifySnap = null;
 let spotifyAsideKey = "";
 
 function stopLastFmPolling() {
+  // Invalidate in-flight Last.fm fetches so they cannot patch a Spotify card
+  lastFmUpdateSeq += 1;
   if (lastFmIntervalId) {
     clearInterval(lastFmIntervalId);
     lastFmIntervalId = null;
@@ -1712,14 +1719,12 @@ function formatSpotifyMessage(payload) {
                             <div class="spotify-progress-fill" style="width:${pct}%"></div>
                         </div>
                         <div class="spotify-progress-footer">
-                            <div class="spotify-progress-times">
-                                <span class="spotify-elapsed">${formatClock(progress)}</span>
-                                <span class="spotify-duration">${formatClock(duration)}</span>
-                            </div>
+                            <span class="spotify-elapsed">${formatClock(progress)}</span>
                             <div class="now-playing-aside">
                                 <div class="now-playing-plays" hidden></div>
-                                <div class="now-playing-previous now-playing-lifetime" hidden></div>
+                                <div class="now-playing-previous" hidden></div>
                             </div>
+                            <span class="spotify-duration">${formatClock(duration)}</span>
                         </div>
                     </div>
                 </div>
@@ -1762,7 +1767,7 @@ async function enrichSpotifyAside(track, previous) {
   spotifyAsideKey = key;
 
   const prevLabel = formatPreviousLine(previous);
-  const $prev = nowPlayingContainer.find(".now-playing-previous, .now-playing-lifetime").first();
+  const $prev = nowPlayingContainer.find(".now-playing-previous").first();
   if ($prev.length) {
     if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
     else $prev.text("").prop("hidden", true);
@@ -1772,7 +1777,7 @@ async function enrichSpotifyAside(track, previous) {
 
   try {
     const playcount = await fetchTrackUserPlaycount(artist, name).catch(() => "");
-    if (spotifyAsideKey !== key) return;
+    if (spotifyAsideKey !== key || musicSource !== "spotify") return;
     patchCardPlays(formatPlayCount(playcount));
     document.dispatchEvent(new CustomEvent("now-playing:updated"));
   } catch (err) {
@@ -1819,8 +1824,11 @@ async function applySpotifyPayload(payload) {
   if (hasCard && !trackChanged) {
     patchSpotifyCardInPlace(payload);
     const prevLabel = formatPreviousLine(payload.previous);
-    const $prev = nowPlayingContainer.find(".now-playing-previous, .now-playing-lifetime").first();
-    if ($prev.length && prevLabel) $prev.text(prevLabel).prop("hidden", false);
+    const $prev = nowPlayingContainer.find(".now-playing-previous").first();
+    if ($prev.length) {
+      if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
+      else $prev.text("").prop("hidden", true);
+    }
     // Keep / repair art gradient regardless of play/pause
     syncCardBackground(track.art_url || "");
   } else {

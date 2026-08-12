@@ -61,7 +61,9 @@
 
   function isNowPlayingCramped() {
     const card = document.querySelector('.now-playing-card:not(.error)');
-    const aside = card && card.querySelector('.now-playing-aside');
+    // Only the Last.fm track-grid aside can collide with title/byline.
+    // Spotify keeps plays under the progress bar.
+    const aside = card && card.querySelector('.now-playing-track .now-playing-aside');
     if (!card || !aside) return false;
 
     const asideRect = aside.getBoundingClientRect();
