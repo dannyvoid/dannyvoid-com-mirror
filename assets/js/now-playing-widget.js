@@ -475,62 +475,112 @@ function colorDistance(a, b) {
   return dr * dr + dg * dg + db * db;
 }
 
-/** Reject near-black / near-white (and close neighbors) for gradient stops. */
-const PALETTE_MIN_LUM = 48;
-const PALETTE_MAX_LUM = 200;
-const PALETTE_MIN_SAT = 0.14;
+/** Reject near-black / near-white / muddy greys for gradient stops. */
+const PALETTE_MIN_LUM = 52;
+const PALETTE_MAX_LUM = 190;
+const PALETTE_MIN_SAT = 0.28;
+const PALETTE_MIN_CHROMA = 36; // max(rgb) - min(rgb)
+const PALETTE_TARGET_SAT = 0.62;
+const PALETTE_MIN_DISTANCE = 3200;
 
 function luminance(r, g, b) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
+function rgbSat(r, g, b) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  return max === 0 ? 0 : (max - min) / max;
+}
+
+function rgbChroma(r, g, b) {
+  return Math.max(r, g, b) - Math.min(r, g, b);
+}
+
 function isUsablePaletteColor(r, g, b, sat) {
   const lum = luminance(r, g, b);
   if (lum < PALETTE_MIN_LUM || lum > PALETTE_MAX_LUM) return false;
-  // Washed near-grays read as dirty white/black in washes - require some chroma
   if (sat < PALETTE_MIN_SAT) return false;
+  if (rgbChroma(r, g, b) < PALETTE_MIN_CHROMA) return false;
   return true;
 }
 
-function clampPaletteColor(color) {
+/** Push a color away from grey toward its dominant hue. */
+function punchSaturation(color, targetSat = PALETTE_TARGET_SAT) {
   let { r, g, b } = color;
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);
-  let sat = max === 0 ? 0 : (max - min) / max;
-  let lum = luminance(r, g, b);
+  if (max <= 0) return { r: 0, g: 0, b: 0, sat: 0 };
 
-  // Pull away from black/white along luminance without killing hue
-  if (lum < PALETTE_MIN_LUM) {
-    const lift = (PALETTE_MIN_LUM - lum) / 255;
-    r = Math.min(255, r + (255 - r) * lift * 1.4);
-    g = Math.min(255, g + (255 - g) * lift * 1.4);
-    b = Math.min(255, b + (255 - b) * lift * 1.4);
-    lum = luminance(r, g, b);
-  } else if (lum > PALETTE_MAX_LUM) {
-    const drop = (lum - PALETTE_MAX_LUM) / 255;
-    r *= 1 - drop * 1.15;
-    g *= 1 - drop * 1.15;
-    b *= 1 - drop * 1.15;
-    lum = luminance(r, g, b);
+  let sat = (max - min) / max;
+  if (sat >= targetSat) {
+    return {
+      r: Math.round(r),
+      g: Math.round(g),
+      b: Math.round(b),
+      sat
+    };
   }
 
-  const max2 = Math.max(r, g, b);
-  const min2 = Math.min(r, g, b);
-  sat = max2 === 0 ? 0 : (max2 - min2) / max2;
-  if (sat < PALETTE_MIN_SAT && max2 > 0) {
-    // Push toward the dominant channel so soft greys don't survive
-    const boost = (PALETTE_MIN_SAT - sat) * max2;
-    if (r >= g && r >= b) r = Math.min(255, r + boost);
-    else if (g >= r && g >= b) g = Math.min(255, g + boost);
-    else b = Math.min(255, b + boost);
+  if (sat < 0.02) {
+    // True grey: invent a mild cool/warm bias from channel noise so punch has a hue
+    const bias = 0.55;
+    if (r >= g && r >= b) {
+      g *= 1 - bias * targetSat;
+      b *= 1 - bias * targetSat;
+    } else if (g >= r && g >= b) {
+      r *= 1 - bias * targetSat;
+      b *= 1 - bias * targetSat;
+    } else {
+      r *= 1 - bias * targetSat;
+      g *= 1 - bias * targetSat;
+    }
+  } else {
+    // Expand distance from the peak channel to hit target saturation
+    const scale = targetSat / sat;
+    r = max - (max - r) * scale;
+    g = max - (max - g) * scale;
+    b = max - (max - b) * scale;
+  }
+
+  const before = luminance(color.r, color.g, color.b);
+  const after = luminance(r, g, b);
+  if (after > 1) {
+    const keep = before / after;
+    r *= keep;
+    g *= keep;
+    b *= keep;
   }
 
   return {
     r: Math.round(Math.max(0, Math.min(255, r))),
     g: Math.round(Math.max(0, Math.min(255, g))),
     b: Math.round(Math.max(0, Math.min(255, b))),
-    sat
+    sat: rgbSat(r, g, b)
   };
+}
+
+function clampPaletteColor(color) {
+  let { r, g, b } = color;
+  let lum = luminance(r, g, b);
+
+  if (lum < PALETTE_MIN_LUM) {
+    const lift = (PALETTE_MIN_LUM - lum) / 255;
+    r = Math.min(255, r + (255 - r) * lift * 1.25);
+    g = Math.min(255, g + (255 - g) * lift * 1.25);
+    b = Math.min(255, b + (255 - b) * lift * 1.25);
+  } else if (lum > PALETTE_MAX_LUM) {
+    const drop = (lum - PALETTE_MAX_LUM) / 255;
+    r *= 1 - drop * 1.1;
+    g *= 1 - drop * 1.1;
+    b *= 1 - drop * 1.1;
+  }
+
+  return punchSaturation({
+    r: Math.max(0, Math.min(255, r)),
+    g: Math.max(0, Math.min(255, g)),
+    b: Math.max(0, Math.min(255, b))
+  });
 }
 
 function pickPaletteFromPixels(data) {
@@ -541,9 +591,7 @@ function pickPaletteFromPixels(data) {
     const r = data[i];
     const g = data[i + 1];
     const b = data[i + 2];
-    const max = Math.max(r, g, b);
-    const min = Math.min(r, g, b);
-    const sat = max === 0 ? 0 : (max - min) / max;
+    const sat = rgbSat(r, g, b);
     if (!isUsablePaletteColor(r, g, b, sat)) continue;
 
     const key = `${r >> 4},${g >> 4},${b >> 4}`;
@@ -559,7 +607,34 @@ function pickPaletteFromPixels(data) {
     bucket.sat += sat;
   }
 
-  const ranked = [...buckets.values()]
+  // Soft pass: if cover is almost all grey, loosen sat so we still get *something*
+  let rankedSource = [...buckets.values()];
+  if (!rankedSource.length) {
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 200) continue;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const lum = luminance(r, g, b);
+      if (lum < PALETTE_MIN_LUM || lum > PALETTE_MAX_LUM) continue;
+      const sat = rgbSat(r, g, b);
+      if (sat < 0.1 || rgbChroma(r, g, b) < 18) continue;
+      const key = `${r >> 4},${g >> 4},${b >> 4}`;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { r: 0, g: 0, b: 0, n: 0, sat: 0 };
+        buckets.set(key, bucket);
+      }
+      bucket.r += r;
+      bucket.g += g;
+      bucket.b += b;
+      bucket.n += 1;
+      bucket.sat += sat;
+    }
+    rankedSource = [...buckets.values()];
+  }
+
+  const ranked = rankedSource
     .map((bucket) => {
       const n = bucket.n;
       const sat = bucket.sat / n;
@@ -568,39 +643,42 @@ function pickPaletteFromPixels(data) {
         g: bucket.g / n,
         b: bucket.b / n
       });
-      // Prefer mid-luminance + chroma so muddy extremes lose to real accents
-      const mid = 1 - Math.abs(luminance(color.r, color.g, color.b) - 124) / 124;
+      const mid = 1 - Math.abs(luminance(color.r, color.g, color.b) - 118) / 118;
+      // Accents over area: chroma dominates, pixel count is only a weak tie-break
+      const chroma = rgbChroma(color.r, color.g, color.b) / 255;
       return {
         ...color,
-        sat,
-        score: n * (0.35 + sat) * (0.55 + 0.45 * Math.max(0, mid))
+        sat: color.sat || sat,
+        score:
+          Math.pow(Math.max(color.sat, sat), 1.65) *
+          (0.35 + chroma) *
+          (0.45 + 0.55 * Math.max(0, mid)) *
+          Math.log2(2 + n)
       };
     })
-    .filter((c) => isUsablePaletteColor(c.r, c.g, c.b, c.sat))
+    .filter((c) => isUsablePaletteColor(c.r, c.g, c.b, c.sat) || c.sat >= 0.22)
     .sort((a, b) => b.score - a.score);
 
   const picked = [];
   for (const color of ranked) {
-    if (picked.every((p) => colorDistance(p, color) > 2200)) {
+    if (picked.every((p) => colorDistance(p, color) > PALETTE_MIN_DISTANCE)) {
       picked.push(color);
     }
     if (picked.length >= 3) break;
   }
 
-  // Pad with hue-shifted siblings - never collapse toward black via * 0.55
   while (picked.length < 3) {
     const last = picked[picked.length - 1] || {
-      r: 72,
-      g: 96,
-      b: 120,
-      sat: 0.35
+      r: 48,
+      g: 140,
+      b: 180,
+      sat: 0.55
     };
-    const shift = 0.18 * (picked.length + 1);
+    const shift = 0.28 * (picked.length + 1);
     const variant = clampPaletteColor({
       r: last.r * (1 - shift) + last.b * shift,
-      g: last.g * (1 - shift * 0.5) + last.r * shift * 0.5,
-      b: last.b * (1 - shift) + last.g * shift,
-      sat: last.sat
+      g: last.g * (1 - shift * 0.45) + last.r * shift * 0.55,
+      b: last.b * (1 - shift) + last.g * shift
     });
     picked.push(variant);
   }
@@ -616,14 +694,21 @@ function mixColor(a, b, t) {
   };
 }
 
+/** Darken without washing toward neutral grey - keep the sampled hue. */
 function softenColor(color, amount) {
-  return mixColor(color, { r: 18, g: 18, b: 18 }, amount);
+  const dark = {
+    r: color.r * 0.18,
+    g: color.g * 0.18,
+    b: color.b * 0.18
+  };
+  return mixColor(color, dark, amount);
 }
 
 function buildArtGradient(colors) {
-  const c0 = softenColor(colors[0], 0.22);
-  const c1 = softenColor(colors[1], 0.28);
-  const c2 = softenColor(colors[2], 0.36);
+  // Less softening = more contrast from the art accents
+  const c0 = softenColor(colors[0], 0.12);
+  const c1 = softenColor(colors[1], 0.18);
+  const c2 = softenColor(colors[2], 0.28);
   const stops = 12;
   const parts = [];
 
@@ -644,9 +729,9 @@ function buildArtGradient(colors) {
   return {
     image: `linear-gradient(115deg, ${parts.join(", ")})`,
     fallback: rgbCss(
-      Math.round(c1.r * 0.45),
-      Math.round(c1.g * 0.45),
-      Math.round(c1.b * 0.45)
+      Math.round(c1.r * 0.42),
+      Math.round(c1.g * 0.42),
+      Math.round(c1.b * 0.42)
     )
   };
 }
