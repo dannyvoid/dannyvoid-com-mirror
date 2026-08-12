@@ -1626,8 +1626,10 @@ function updatePage() {
 
 const LIVE_POLL_VISIBLE_MS = 2000;
 const LIVE_POLL_HIDDEN_MS = 20000;
-const LIVE_FETCH_TIMEOUT_MS = 1500;
+const LIVE_FETCH_TIMEOUT_MS = 3000;
 const LIVE_PROGRESS_TICK_MS = 250;
+// Keep showing ABS across brief API gaps unless Spotify is actually playing.
+const ABS_CLIENT_STICKY_MS = 45000;
 
 let musicSource = null; // "audiobookshelf" | "spotify" | "lastfm"
 let lastFmIntervalId = null;
@@ -1636,6 +1638,8 @@ let liveProgressTimer = null;
 let liveTrackId = "";
 let liveSnap = null;
 let spotifyAsideKey = "";
+let lastAbsPayload = null;
+let lastAbsOkAt = 0;
 
 function isLiveOriginSource() {
   return musicSource === "spotify" || musicSource === "audiobookshelf";
@@ -1924,6 +1928,8 @@ function enterLastFmFallback() {
   liveTrackId = "";
   liveSnap = null;
   spotifyAsideKey = "";
+  lastAbsPayload = null;
+  lastAbsOkAt = 0;
   if (musicSource === "lastfm") return;
   musicSource = "lastfm";
   lastTrackIdentity = "";
@@ -1946,6 +1952,9 @@ async function applyAbsPayload(payload) {
     enterLastFmFallback();
     return;
   }
+
+  lastAbsPayload = payload;
+  lastAbsOkAt = Date.now();
 
   if (musicSource !== "audiobookshelf") {
     stopLastFmPolling();
@@ -2045,22 +2054,40 @@ async function tickLiveSources() {
     fetchSpotifyNowPlaying()
   ]);
 
-  const absOk = isUsableLivePayload(abs);
+  let absPayload = abs;
+  let absOk = isUsableLivePayload(absPayload);
+  if (absOk) {
+    lastAbsPayload = absPayload;
+    lastAbsOkAt = Date.now();
+  } else if (
+    lastAbsPayload &&
+    Date.now() - lastAbsOkAt <= ABS_CLIENT_STICKY_MS
+  ) {
+    // Brief ABS miss/timeout — keep last book unless Spotify is actively playing.
+    absPayload = lastAbsPayload;
+    absOk = true;
+  } else if (!absOk) {
+    lastAbsPayload = null;
+    lastAbsOkAt = 0;
+  }
+
   const spotOk = isUsableLivePayload(spotify);
-  const absActive = absOk && !!abs.is_playing;
+  const absActive = absOk && !!absPayload.is_playing;
   const spotActive = spotOk && !!spotify.is_playing;
 
   // ABS active > Spotify active > ABS paused > Spotify paused/present > Last.fm
   if (absActive) {
-    await applyAbsPayload(abs);
+    await applyAbsPayload(absPayload);
     return;
   }
   if (spotActive) {
+    lastAbsPayload = null;
+    lastAbsOkAt = 0;
     await applySpotifyPayload(spotify);
     return;
   }
   if (absOk) {
-    await applyAbsPayload(abs);
+    await applyAbsPayload(absPayload);
     return;
   }
   if (spotOk) {
