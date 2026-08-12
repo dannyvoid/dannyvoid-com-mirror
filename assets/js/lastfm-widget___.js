@@ -1344,7 +1344,9 @@ function updateCardInPlace(track, options) {
   }
 
   const prevTitle = $card.find(".track-name").text();
-  $card.removeClass("playing paused").addClass(isPlaying ? "playing" : "paused");
+  $card.removeClass("playing paused spotify-live").addClass(isPlaying ? "playing" : "paused");
+  $card.find(".status-indicator").remove();
+  $card.find(".spotify-progress").remove();
   $card.find(".status-text").text(isPlaying ? "Now Playing" : "Last Played");
   $card.find(".track-name").text(songName);
   $card.find(".track-artist").text(artistName);
@@ -1409,7 +1411,9 @@ async function updateLastFmData() {
   applyImmediateArt(latestSong);
   const identity = getTrackIdentity(latestSong);
   const artKey = trackArtKey(latestSong);
-  const hasCard = lastFmContainer.find(".lastfm-card").not(".error").length > 0;
+  // Never in-place-patch a Spotify card - remount Last.fm markup instead
+  const hasCard =
+    lastFmContainer.find(".lastfm-card").not(".error").not(".spotify-live").length > 0;
   const trackChanged = identity !== lastTrackIdentity;
   const $art = lastFmContainer.find(".lastfm-artwork");
   const artBroken = isDisplayedArtBroken($art);
@@ -1712,6 +1716,7 @@ function enterLastFmFallback() {
   spotifyAsideKey = "";
   if (musicSource === "lastfm") return;
   musicSource = "lastfm";
+  lastTrackIdentity = "";
   startLastFmPolling();
 }
 
