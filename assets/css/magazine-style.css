@@ -745,12 +745,12 @@ img {
   text-transform: inherit;
 }
 
-/* Last.fm Widget Styles */
-.lastfm-widget {
+/* Now Playing Widget Styles */
+.now-playing-widget {
   font-family: var(--font-mono);
 }
 
-.lastfm-loading {
+.now-playing-loading {
   font-family: var(--font-mono);
   font-size: 1rem;
   text-transform: uppercase;
@@ -759,7 +759,7 @@ img {
   padding: 2rem 0;
 }
 
-.lastfm-card {
+.now-playing-card {
   position: relative;
   overflow: hidden;
   background: var(--color-black);
@@ -773,7 +773,7 @@ img {
   isolation: isolate;
 }
 
-.lastfm-card-bg {
+.now-playing-card-bg {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -784,7 +784,7 @@ img {
   background-color: transparent;
 }
 
-.lastfm-card-bg-wash {
+.now-playing-card-bg-wash {
   position: absolute;
   inset: 0;
   z-index: 0;
@@ -793,33 +793,33 @@ img {
   background-size: 240% 240%;
   background-position: 0% 50%;
   transition: opacity 0.28s ease;
-  animation: lastfm-grad-drift 16s ease-in-out infinite alternate;
+  animation: now-playing-grad-drift 16s ease-in-out infinite alternate;
 }
 
-.lastfm-card-bg-wash.is-incoming {
+.now-playing-card-bg-wash.is-incoming {
   opacity: 0;
   animation: none;
   z-index: 1;
 }
 
-.lastfm-card-bg-wash.is-incoming.is-shown {
+.now-playing-card-bg-wash.is-incoming.is-shown {
   opacity: 1;
 }
 
-.lastfm-card-bg-wash.is-leaving {
+.now-playing-card-bg-wash.is-leaving {
   opacity: 0;
   animation: none;
   z-index: 0;
 }
 
-@keyframes lastfm-grad-drift {
+@keyframes now-playing-grad-drift {
   0% { background-position: 0% 35%; }
   50% { background-position: 70% 65%; }
   100% { background-position: 100% 40%; }
 }
 
 /* Fine grain breaks 8-bit gradient banding - above washes so crossfades stay even */
-.lastfm-card-bg::before {
+.now-playing-card-bg::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -830,7 +830,7 @@ img {
   background-size: 180px 180px;
 }
 
-.lastfm-card-bg::after {
+.now-playing-card-bg::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -839,28 +839,28 @@ img {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lastfm-card-bg-wash {
+  .now-playing-card-bg-wash {
     animation: none;
     background-size: 100% 100%;
     background-position: center;
     transition: none;
   }
 
-  .lastfm-artwork.is-art-swapping img.lastfm-art-layer {
+  .now-playing-artwork.is-art-swapping img.now-playing-art-layer {
     transition: none;
   }
 }
 
-.lastfm-card.playing {
+.now-playing-card.playing {
   border-color: var(--color-accent);
 }
 
-.lastfm-card:hover {
+.now-playing-card:hover {
   transform: translateY(-3px);
   box-shadow: 0 10px 30px rgba(0, 255, 136, 0.15);
 }
 
-.lastfm-artwork {
+.now-playing-artwork {
   position: relative;
   z-index: 1;
   flex-shrink: 0;
@@ -872,13 +872,13 @@ img {
   background: var(--color-gray-200);
 }
 
-.lastfm-card:hover .lastfm-artwork {
+.now-playing-card:hover .now-playing-artwork {
   transform: scale(1.05);
   border-color: var(--color-accent);
 }
 
-.lastfm-artwork img,
-.lastfm-artwork img.lastfm-art-layer {
+.now-playing-artwork img,
+.now-playing-artwork img.now-playing-art-layer {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -887,27 +887,27 @@ img {
   display: block;
 }
 
-.lastfm-artwork img.lastfm-art-layer {
+.now-playing-artwork img.now-playing-art-layer {
   opacity: 0;
   transition: none;
   z-index: 0;
 }
 
-.lastfm-artwork.is-art-swapping img.lastfm-art-layer {
+.now-playing-artwork.is-art-swapping img.now-playing-art-layer {
   transition: opacity 0.45s ease;
 }
 
-.lastfm-artwork img.lastfm-art-layer.is-visible {
+.now-playing-artwork img.now-playing-art-layer.is-visible {
   opacity: 1;
   z-index: 1;
 }
 
-.lastfm-artwork img.lastfm-art-layer.is-outgoing {
+.now-playing-artwork img.now-playing-art-layer.is-outgoing {
   opacity: 0;
   z-index: 0;
 }
 
-.lastfm-artwork .dither-overlay-canvas {
+.now-playing-artwork .dither-overlay-canvas {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -919,11 +919,11 @@ img {
   image-rendering: crisp-edges;
 }
 
-.lastfm-card.paused .lastfm-artwork .dither-overlay-canvas {
+.now-playing-card.paused .now-playing-artwork .dither-overlay-canvas {
   opacity: 0 !important;
 }
 
-.lastfm-content {
+.now-playing-content {
   position: relative;
   z-index: 1;
   flex: 1;
@@ -933,7 +933,7 @@ img {
   min-height: 0;
 }
 
-.lastfm-main {
+.now-playing-main {
   display: flex;
   flex-direction: column;
   gap: 0.15rem;
@@ -942,7 +942,7 @@ img {
   overflow: visible;
 }
 
-.lastfm-live {
+.now-playing-live {
   position: absolute;
   top: 3rem;
   right: 3rem;
@@ -958,12 +958,12 @@ img {
   white-space: nowrap;
 }
 
-.lastfm-live:hover {
+.now-playing-live:hover {
   color: var(--color-white);
   border-bottom: none;
 }
 
-.lastfm-track {
+.now-playing-track {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas:
@@ -976,11 +976,11 @@ img {
   min-width: 0;
 }
 
-.lastfm-track .track-link {
+.now-playing-track .track-link {
   display: contents;
 }
 
-.lastfm-aside {
+.now-playing-aside {
   grid-area: stats;
   position: static;
   z-index: 1;
@@ -994,7 +994,7 @@ img {
   pointer-events: none;
 }
 
-.lastfm-status {
+.now-playing-status {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1006,7 +1006,7 @@ img {
   line-height: 1.2;
 }
 
-.lastfm-track a {
+.now-playing-track a {
   border: none;
   display: block;
 }
@@ -1071,14 +1071,14 @@ img {
 }
 
 .track-album[hidden],
-.lastfm-time[hidden],
-.lastfm-plays[hidden],
-.lastfm-lifetime[hidden],
-.lastfm-previous[hidden] {
+.now-playing-time[hidden],
+.now-playing-plays[hidden],
+.now-playing-lifetime[hidden],
+.now-playing-previous[hidden] {
   display: none !important;
 }
 
-.lastfm-time {
+.now-playing-time {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   color: var(--color-gray-500);
@@ -1088,13 +1088,13 @@ img {
   line-height: 1.2;
 }
 
-.lastfm-time:not([hidden])::before {
+.now-playing-time:not([hidden])::before {
   content: "·";
   margin-right: 0.55rem;
   opacity: 0.7;
 }
 
-.lastfm-plays {
+.now-playing-plays {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   color: var(--color-gray-500);
@@ -1103,7 +1103,7 @@ img {
   line-height: 1.2;
 }
 
-.lastfm-lifetime {
+.now-playing-lifetime {
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   font-weight: 400;
@@ -1115,7 +1115,7 @@ img {
   white-space: nowrap;
 }
 
-.lastfm-previous {
+.now-playing-previous {
   text-transform: none;
   letter-spacing: 0.04em;
   white-space: normal;
@@ -1170,7 +1170,7 @@ img {
 }
 
 /* Spotify progress chrome; shared card type is already compact above. */
-.lastfm-card.spotify-live .spotify-progress-footer .lastfm-aside {
+.now-playing-card.spotify-live .spotify-progress-footer .now-playing-aside {
   position: static;
   max-width: min(16rem, 52%);
   margin: 0;
@@ -1178,17 +1178,17 @@ img {
   gap: 0.15rem;
 }
 
-.lastfm-card.spotify-live .lastfm-plays,
-.lastfm-card.spotify-live .lastfm-previous {
+.now-playing-card.spotify-live .now-playing-plays,
+.now-playing-card.spotify-live .now-playing-previous {
   font-size: 0.6875rem;
   line-height: 1.2;
 }
 
-.lastfm-card.spotify-live .lastfm-previous {
+.now-playing-card.spotify-live .now-playing-previous {
   -webkit-line-clamp: 1;
 }
 
-.lastfm-card.spotify-live.paused .spotify-progress-fill {
+.now-playing-card.spotify-live.paused .spotify-progress-fill {
   transition: none;
 }
 
@@ -2095,7 +2095,7 @@ html.has-action-cursor [data-cursor] {
 }
 
 /*
- * Compact chrome for masthead + Last.fm - driven by one content-aware
+ * Compact chrome for masthead + now-playing - driven by one content-aware
  * detector in magazine-interactions.js (html.is-narrow-layout).
  * Do not reintroduce separate max-width gates for these hides.
  */
@@ -2109,12 +2109,12 @@ html.is-narrow-layout .main-nav .hire-link {
   margin-left: 0;
 }
 
-html.is-narrow-layout .lastfm-aside,
+html.is-narrow-layout .now-playing-aside,
 html.is-narrow-layout .track-album {
   display: none !important;
 }
 
-html.is-narrow-layout .lastfm-track {
+html.is-narrow-layout .now-playing-track {
   grid-template-columns: 1fr;
   grid-template-areas:
     "name"
@@ -2391,27 +2391,27 @@ html.is-narrow-layout .lastfm-track {
     grid-column: span 1;
   }
   
-  .lastfm-card {
+  .now-playing-card {
     flex-direction: column;
     align-items: flex-start;
     padding: 2rem;
   }
 
-  .lastfm-content {
+  .now-playing-content {
     width: 100%;
     padding-right: 0;
-    /* Room for absolute "Data from Last.fm" only */
+    /* Room for absolute data-source label only */
     padding-top: 1.75rem;
     align-items: flex-start;
   }
 
-  .lastfm-live {
+  .now-playing-live {
     top: 2rem;
     right: 2rem;
     font-size: 0.75rem;
   }
 
-  .lastfm-track {
+  .now-playing-track {
     grid-template-columns: 1fr;
     grid-template-areas:
       "name"
@@ -2421,7 +2421,7 @@ html.is-narrow-layout .lastfm-track {
   }
 
   /* Aside is hidden via html.is-narrow-layout; static layout kept as fallback */
-  .lastfm-aside {
+  .now-playing-aside {
     position: static;
     align-items: flex-start;
     text-align: left;

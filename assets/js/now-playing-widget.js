@@ -5,16 +5,16 @@ const sleepTime = 10000;
 const maxRetries = 3;
 const retryDelay = 2000;
 
-const lastFmContainer = $("#lastfm");
+const nowPlayingContainer = $("#now-playing");
 
 function getRecentTracksUrl() {
   return `${apiUrl}?method=user.getRecentTracks&user=${username}&api_key=${api_key}&format=json&limit=1`;
 }
 
 function displayMessage(message) {
-  // Remount wipes .lastfm-card-bg washes - force the next sync to repaint.
+  // Remount wipes .now-playing-card-bg washes - force the next sync to repaint.
   lastGradientArtUrl = "";
-  lastFmContainer.html(message);
+  nowPlayingContainer.html(message);
 }
 
 function displayError(message) {
@@ -475,6 +475,64 @@ function colorDistance(a, b) {
   return dr * dr + dg * dg + db * db;
 }
 
+/** Reject near-black / near-white (and close neighbors) for gradient stops. */
+const PALETTE_MIN_LUM = 48;
+const PALETTE_MAX_LUM = 200;
+const PALETTE_MIN_SAT = 0.14;
+
+function luminance(r, g, b) {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+function isUsablePaletteColor(r, g, b, sat) {
+  const lum = luminance(r, g, b);
+  if (lum < PALETTE_MIN_LUM || lum > PALETTE_MAX_LUM) return false;
+  // Washed near-grays read as dirty white/black in washes - require some chroma
+  if (sat < PALETTE_MIN_SAT) return false;
+  return true;
+}
+
+function clampPaletteColor(color) {
+  let { r, g, b } = color;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  let sat = max === 0 ? 0 : (max - min) / max;
+  let lum = luminance(r, g, b);
+
+  // Pull away from black/white along luminance without killing hue
+  if (lum < PALETTE_MIN_LUM) {
+    const lift = (PALETTE_MIN_LUM - lum) / 255;
+    r = Math.min(255, r + (255 - r) * lift * 1.4);
+    g = Math.min(255, g + (255 - g) * lift * 1.4);
+    b = Math.min(255, b + (255 - b) * lift * 1.4);
+    lum = luminance(r, g, b);
+  } else if (lum > PALETTE_MAX_LUM) {
+    const drop = (lum - PALETTE_MAX_LUM) / 255;
+    r *= 1 - drop * 1.15;
+    g *= 1 - drop * 1.15;
+    b *= 1 - drop * 1.15;
+    lum = luminance(r, g, b);
+  }
+
+  const max2 = Math.max(r, g, b);
+  const min2 = Math.min(r, g, b);
+  sat = max2 === 0 ? 0 : (max2 - min2) / max2;
+  if (sat < PALETTE_MIN_SAT && max2 > 0) {
+    // Push toward the dominant channel so soft greys don't survive
+    const boost = (PALETTE_MIN_SAT - sat) * max2;
+    if (r >= g && r >= b) r = Math.min(255, r + boost);
+    else if (g >= r && g >= b) g = Math.min(255, g + boost);
+    else b = Math.min(255, b + boost);
+  }
+
+  return {
+    r: Math.round(Math.max(0, Math.min(255, r))),
+    g: Math.round(Math.max(0, Math.min(255, g))),
+    b: Math.round(Math.max(0, Math.min(255, b))),
+    sat
+  };
+}
+
 function pickPaletteFromPixels(data) {
   const buckets = new Map();
 
@@ -485,10 +543,9 @@ function pickPaletteFromPixels(data) {
     const b = data[i + 2];
     const max = Math.max(r, g, b);
     const min = Math.min(r, g, b);
-    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    if (lum < 16 || lum > 245) continue;
-
     const sat = max === 0 ? 0 : (max - min) / max;
+    if (!isUsablePaletteColor(r, g, b, sat)) continue;
+
     const key = `${r >> 4},${g >> 4},${b >> 4}`;
     let bucket = buckets.get(key);
     if (!bucket) {
@@ -506,14 +563,20 @@ function pickPaletteFromPixels(data) {
     .map((bucket) => {
       const n = bucket.n;
       const sat = bucket.sat / n;
+      const color = clampPaletteColor({
+        r: bucket.r / n,
+        g: bucket.g / n,
+        b: bucket.b / n
+      });
+      // Prefer mid-luminance + chroma so muddy extremes lose to real accents
+      const mid = 1 - Math.abs(luminance(color.r, color.g, color.b) - 124) / 124;
       return {
-        r: Math.round(bucket.r / n),
-        g: Math.round(bucket.g / n),
-        b: Math.round(bucket.b / n),
+        ...color,
         sat,
-        score: n * (0.4 + sat)
+        score: n * (0.35 + sat) * (0.55 + 0.45 * Math.max(0, mid))
       };
     })
+    .filter((c) => isUsablePaletteColor(c.r, c.g, c.b, c.sat))
     .sort((a, b) => b.score - a.score);
 
   const picked = [];
@@ -524,17 +587,25 @@ function pickPaletteFromPixels(data) {
     if (picked.length >= 3) break;
   }
 
+  // Pad with hue-shifted siblings - never collapse toward black via * 0.55
   while (picked.length < 3) {
-    const last = picked[picked.length - 1] || { r: 40, g: 40, b: 40, sat: 0 };
-    picked.push({
-      r: Math.round(last.r * 0.55),
-      g: Math.round(last.g * 0.55),
-      b: Math.round(last.b * 0.55),
+    const last = picked[picked.length - 1] || {
+      r: 72,
+      g: 96,
+      b: 120,
+      sat: 0.35
+    };
+    const shift = 0.18 * (picked.length + 1);
+    const variant = clampPaletteColor({
+      r: last.r * (1 - shift) + last.b * shift,
+      g: last.g * (1 - shift * 0.5) + last.r * shift * 0.5,
+      b: last.b * (1 - shift) + last.g * shift,
       sat: last.sat
     });
+    picked.push(variant);
   }
 
-  return picked;
+  return picked.map((c) => clampPaletteColor(c));
 }
 
 function mixColor(a, b, t) {
@@ -676,21 +747,21 @@ function prefersReducedMotion() {
 }
 
 function getCardBackgroundEls() {
-  const $card = lastFmContainer.find(".lastfm-card").not(".error");
+  const $card = nowPlayingContainer.find(".now-playing-card").not(".error");
   if (!$card.length) return null;
 
-  let $bg = $card.children(".lastfm-card-bg");
+  let $bg = $card.children(".now-playing-card-bg");
   if (!$bg.length) {
     $card.prepend(
-      '<div class="lastfm-card-bg" aria-hidden="true"><div class="lastfm-card-bg-wash"></div></div>'
+      '<div class="now-playing-card-bg" aria-hidden="true"><div class="now-playing-card-bg-wash"></div></div>'
     );
-    $bg = $card.children(".lastfm-card-bg");
+    $bg = $card.children(".now-playing-card-bg");
   }
 
-  let $wash = $bg.children(".lastfm-card-bg-wash:not(.is-leaving)").last();
+  let $wash = $bg.children(".now-playing-card-bg-wash:not(.is-leaving)").last();
   if (!$wash.length) {
-    $bg.prepend('<div class="lastfm-card-bg-wash"></div>');
-    $wash = $bg.children(".lastfm-card-bg-wash").last();
+    $bg.prepend('<div class="now-playing-card-bg-wash"></div>');
+    $wash = $bg.children(".now-playing-card-bg-wash").last();
   }
 
   return { $card, $bg, $wash };
@@ -698,10 +769,10 @@ function getCardBackgroundEls() {
 
 function cardArtUrl($card) {
   if (!$card || !$card.length) return "";
-  const $art = $card.find(".lastfm-artwork");
+  const $art = $card.find(".now-playing-artwork");
   return (
     $art.attr("data-art-url") ||
-    $art.find("img.lastfm-art-front").attr("src") ||
+    $art.find("img.now-playing-art-front").attr("src") ||
     $art.find("img").first().attr("src") ||
     ""
   );
@@ -718,7 +789,7 @@ async function syncCardBackground(artUrl) {
 
   if (!url) {
     lastGradientArtUrl = "";
-    initial.$bg.children(".lastfm-card-bg-wash").css({
+    initial.$bg.children(".now-playing-card-bg-wash").css({
       opacity: "0",
       backgroundImage: "none"
     });
@@ -755,7 +826,7 @@ async function syncCardBackground(artUrl) {
     const hasActiveWash = liveActiveImage && liveActiveImage !== "none";
 
     if (!hasActiveWash || prefersReducedMotion()) {
-      live.$bg.children(".lastfm-card-bg-wash.is-leaving, .lastfm-card-bg-wash.is-incoming").remove();
+      live.$bg.children(".now-playing-card-bg-wash.is-leaving, .now-playing-card-bg-wash.is-incoming").remove();
       $active
         .removeClass("is-incoming is-leaving is-shown")
         .css({ backgroundImage: gradient.image, opacity: "1" });
@@ -764,9 +835,9 @@ async function syncCardBackground(artUrl) {
     }
 
     // Dual-wash crossfade: incoming over outgoing (snappy vs art fade)
-    live.$bg.children(".lastfm-card-bg-wash.is-incoming").remove();
+    live.$bg.children(".now-playing-card-bg-wash.is-incoming").remove();
     const $next = $(
-      '<div class="lastfm-card-bg-wash is-incoming" aria-hidden="true"></div>'
+      '<div class="now-playing-card-bg-wash is-incoming" aria-hidden="true"></div>'
     );
     $next.css("background-image", gradient.image);
     live.$bg.append($next);
@@ -784,9 +855,9 @@ async function syncCardBackground(artUrl) {
       if (token !== gradientToken) return;
       const els = getCardBackgroundEls();
       if (!els) return;
-      els.$bg.children(".lastfm-card-bg-wash.is-leaving").remove();
+      els.$bg.children(".now-playing-card-bg-wash.is-leaving").remove();
       els.$bg
-        .children(".lastfm-card-bg-wash.is-incoming")
+        .children(".now-playing-card-bg-wash.is-incoming")
         .removeClass("is-incoming is-shown")
         .css("opacity", "1");
       lastGradientArtUrl = url;
@@ -893,7 +964,7 @@ async function fetchTrackUserPlaycount(artist, trackName) {
 }
 
 function patchCardAlbum(albumName) {
-  const $album = lastFmContainer.find(".track-album");
+  const $album = nowPlayingContainer.find(".track-album");
   if (!$album.length) return;
   if (albumName) {
     $album.text(albumName).prop("hidden", false);
@@ -903,7 +974,7 @@ function patchCardAlbum(albumName) {
 }
 
 function patchCardPlays(playsLabel) {
-  const $plays = lastFmContainer.find(".lastfm-plays");
+  const $plays = nowPlayingContainer.find(".now-playing-plays");
   if (!$plays.length) return;
   if (playsLabel) {
     $plays.text(playsLabel).prop("hidden", false);
@@ -913,7 +984,7 @@ function patchCardPlays(playsLabel) {
 }
 
 function patchCardLifetime(lifetimeLabel) {
-  const $lifetime = lastFmContainer.find(".lastfm-lifetime");
+  const $lifetime = nowPlayingContainer.find(".now-playing-lifetime");
   if (!$lifetime.length) return;
   if (lifetimeLabel) {
     $lifetime.text(lifetimeLabel).prop("hidden", false);
@@ -928,7 +999,7 @@ async function enrichCardMeta(track) {
   const trackName = track && track.name;
 
   patchCardAlbum(getAlbumName(track));
-  document.dispatchEvent(new CustomEvent("lastfm:updated"));
+  document.dispatchEvent(new CustomEvent("now-playing:updated"));
 
   try {
     const [playcount, user] = await Promise.all([
@@ -940,7 +1011,7 @@ async function enrichCardMeta(track) {
 
     patchCardPlays(formatPlayCount(playcount));
     patchCardLifetime(formatLifetimeLine(user));
-    document.dispatchEvent(new CustomEvent("lastfm:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
   } catch (err) {
     console.warn("Last.fm meta enrich failed:", err);
   }
@@ -961,25 +1032,25 @@ function formatMessage(track) {
   const safeArt = escapeHtml(albumArt);
 
   return `
-        <div class="lastfm-card ${statusClass}">
-            <div class="lastfm-card-bg" aria-hidden="true"><div class="lastfm-card-bg-wash"></div></div>
-            <div class="lastfm-artwork"${albumArt ? ` data-art-url="${safeArt}" data-art-for="${escapeHtml(trackArtKey(track))}"` : ` data-art-for="${escapeHtml(trackArtKey(track))}"`}>
+        <div class="now-playing-card ${statusClass}">
+            <div class="now-playing-card-bg" aria-hidden="true"><div class="now-playing-card-bg-wash"></div></div>
+            <div class="now-playing-artwork"${albumArt ? ` data-art-url="${safeArt}" data-art-for="${escapeHtml(trackArtKey(track))}"` : ` data-art-for="${escapeHtml(trackArtKey(track))}"`}>
               ${
                 albumArt
-                  ? `<img class="lastfm-art-layer lastfm-art-front is-visible" src="${safeArt}" alt="${safeName}" decoding="async" fetchpriority="high" referrerpolicy="no-referrer" />
-              <img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
-                  : `<img class="lastfm-art-layer lastfm-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />
-              <img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
+                  ? `<img class="now-playing-art-layer now-playing-art-front is-visible" src="${safeArt}" alt="${safeName}" decoding="async" fetchpriority="high" referrerpolicy="no-referrer" />
+              <img class="now-playing-art-layer now-playing-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
+                  : `<img class="now-playing-art-layer now-playing-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />
+              <img class="now-playing-art-layer now-playing-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
               }
               <canvas class="dither-overlay-canvas" aria-hidden="true"></canvas>
             </div>
-            <div class="lastfm-content">
-                <div class="lastfm-main">
-                    <div class="lastfm-status">
+            <div class="now-playing-content">
+                <div class="now-playing-main">
+                    <div class="now-playing-status">
                         <span class="status-text">${statusText}</span>
-                        <span class="lastfm-time"${timeString ? "" : " hidden"}>${escapeHtml(timeString)}</span>
+                        <span class="now-playing-time"${timeString ? "" : " hidden"}>${escapeHtml(timeString)}</span>
                     </div>
-                    <div class="lastfm-track">
+                    <div class="now-playing-track">
                         <a href="https://last.fm/user/${username}" target="_blank" class="track-link">
                             <div class="track-name" data-sound-hover>${safeName}</div>
                             <div class="track-byline">
@@ -987,14 +1058,14 @@ function formatMessage(track) {
                                 <div class="track-album"${albumName ? "" : " hidden"}>${safeAlbum}</div>
                             </div>
                         </a>
-                        <div class="lastfm-aside">
-                            <div class="lastfm-plays" hidden></div>
-                            <div class="lastfm-lifetime" hidden></div>
+                        <div class="now-playing-aside">
+                            <div class="now-playing-plays" hidden></div>
+                            <div class="now-playing-lifetime" hidden></div>
                         </div>
                     </div>
                 </div>
             </div>
-            <a href="https://last.fm/user/${username}" target="_blank" rel="noopener" class="lastfm-live" data-sound-hover>Data from Last.fm</a>
+            <a href="https://last.fm/user/${username}" target="_blank" rel="noopener" class="now-playing-live" data-sound-hover>Data from Last.fm</a>
         </div>
     `;
 }
@@ -1013,31 +1084,31 @@ function trackArtKey(track) {
 function ensureArtLayers($art) {
   if (!$art.length) return null;
 
-  let $front = $art.children("img.lastfm-art-front");
-  let $back = $art.children("img.lastfm-art-back");
+  let $front = $art.children("img.now-playing-art-front");
+  let $back = $art.children("img.now-playing-art-back");
 
   if (!$front.length) {
-    const $legacy = $art.children("img").not(".lastfm-art-back").first();
+    const $legacy = $art.children("img").not(".now-playing-art-back").first();
     if ($legacy.length) {
-      $legacy.addClass("lastfm-art-layer lastfm-art-front is-visible");
+      $legacy.addClass("now-playing-art-layer now-playing-art-front is-visible");
       $front = $legacy;
     } else {
       $art.prepend(
-        '<img class="lastfm-art-layer lastfm-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />'
+        '<img class="now-playing-art-layer now-playing-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />'
       );
-      $front = $art.children("img.lastfm-art-front");
+      $front = $art.children("img.now-playing-art-front");
     }
   } else {
-    $front.addClass("lastfm-art-layer");
+    $front.addClass("now-playing-art-layer");
   }
 
   if (!$back.length) {
     $front.after(
-      '<img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />'
+      '<img class="now-playing-art-layer now-playing-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />'
     );
-    $back = $art.children("img.lastfm-art-back");
+    $back = $art.children("img.now-playing-art-back");
   } else {
-    $back.addClass("lastfm-art-layer");
+    $back.addClass("now-playing-art-layer");
   }
 
   if (!$art.find(".dither-overlay-canvas").length) {
@@ -1048,12 +1119,12 @@ function ensureArtLayers($art) {
 }
 
 function bindArtError($img) {
-  $img.off("error.lastfmArt");
-  $img.on("error.lastfmArt", () => {
+  $img.off("error.nowPlayingArt");
+  $img.on("error.nowPlayingArt", () => {
     const failed = $img.attr("src");
     if (failed) artFailUrls.add(failed);
     document.dispatchEvent(
-      new CustomEvent("lastfm:art-error", { detail: { src: failed || "" } })
+      new CustomEvent("now-playing:art-error", { detail: { src: failed || "" } })
     );
   });
 }
@@ -1069,7 +1140,7 @@ function clearArtSwapTimer() {
 }
 
 function artLayers($art) {
-  return $art.children("img.lastfm-art-layer");
+  return $art.children("img.now-playing-art-layer");
 }
 
 function forceArtReflow($art) {
@@ -1078,17 +1149,17 @@ function forceArtReflow($art) {
 
 function getDisplayedArtUrl($art) {
   if (!$art || !$art.length) return "";
-  const $showing = $art.children("img.lastfm-art-layer.is-visible").last().length
-    ? $art.children("img.lastfm-art-layer.is-visible").last()
-    : $art.children("img.lastfm-art-front").first();
+  const $showing = $art.children("img.now-playing-art-layer.is-visible").last().length
+    ? $art.children("img.now-playing-art-layer.is-visible").last()
+    : $art.children("img.now-playing-art-front").first();
   return ($showing.attr("src") || "") || ($art.attr("data-art-url") || "");
 }
 
 function isDisplayedArtBroken($art) {
   if (!$art || !$art.length) return true;
-  const $showing = $art.children("img.lastfm-art-layer.is-visible").last().length
-    ? $art.children("img.lastfm-art-layer.is-visible").last()
-    : $art.children("img.lastfm-art-front").first();
+  const $showing = $art.children("img.now-playing-art-layer.is-visible").last().length
+    ? $art.children("img.now-playing-art-layer.is-visible").last()
+    : $art.children("img.now-playing-art-front").first();
   if (!$showing.length) return true;
   const el = $showing[0];
   const src = $showing.attr("src") || "";
@@ -1107,7 +1178,7 @@ function clearArtLayers($art) {
     const s = this.getAttribute("src");
     if (s) stale.push(s);
     $(this)
-      .off("load.lastfmArtFade error.lastfmArtFade error.lastfmArt")
+      .off("load.nowPlayingArtFade error.nowPlayingArtFade error.nowPlayingArt")
       .removeClass("is-visible is-outgoing")
       .removeAttr("src")
       .attr({ alt: "", "aria-hidden": "true" });
@@ -1120,12 +1191,12 @@ function clearArtLayers($art) {
   const layers = ensureArtLayers($art);
   if (layers) {
     layers.$front
-      .removeClass("lastfm-art-back is-visible is-outgoing")
-      .addClass("lastfm-art-layer lastfm-art-front")
+      .removeClass("now-playing-art-back is-visible is-outgoing")
+      .addClass("now-playing-art-layer now-playing-art-front")
       .removeAttr("aria-hidden");
     layers.$back
-      .removeClass("lastfm-art-front is-visible is-outgoing")
-      .addClass("lastfm-art-layer lastfm-art-back")
+      .removeClass("now-playing-art-front is-visible is-outgoing")
+      .addClass("now-playing-art-layer now-playing-art-back")
       .attr("aria-hidden", "true");
   }
 
@@ -1140,9 +1211,9 @@ function clearArtLayers($art) {
 function swapAlbumArt($artOrImg, newSrc, alt, options) {
   const opts = options || {};
   const ownerKey = opts.ownerKey || "";
-  const $art = $artOrImg.hasClass("lastfm-artwork")
+  const $art = $artOrImg.hasClass("now-playing-artwork")
     ? $artOrImg
-    : $artOrImg.closest(".lastfm-artwork");
+    : $artOrImg.closest(".now-playing-artwork");
   if (!$art.length) return;
   if (!ensureArtLayers($art)) return;
 
@@ -1173,7 +1244,7 @@ function swapAlbumArt($artOrImg, newSrc, alt, options) {
 
   if (!newSrc) {
     $art.removeAttr("data-art-swap");
-    document.dispatchEvent(new CustomEvent("lastfm:art-updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
     return;
   }
 
@@ -1182,7 +1253,7 @@ function swapAlbumArt($artOrImg, newSrc, alt, options) {
   const $front = layers.$front;
 
   $front
-    .off("load.lastfmArtFade error.lastfmArtFade")
+    .off("load.nowPlayingArtFade error.nowPlayingArtFade")
     .removeAttr("crossorigin")
     .attr({
       referrerpolicy: "no-referrer",
@@ -1199,7 +1270,7 @@ function swapAlbumArt($artOrImg, newSrc, alt, options) {
     if (prefersReducedMotion()) {
       $front.addClass("is-visible");
       $art.removeClass("is-art-swapping").removeAttr("data-art-swap");
-      document.dispatchEvent(new CustomEvent("lastfm:art-updated"));
+      document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
       return;
     }
 
@@ -1212,7 +1283,7 @@ function swapAlbumArt($artOrImg, newSrc, alt, options) {
       artSwapTimer = window.setTimeout(() => {
         if (seq !== artSwapSeq) return;
         $art.removeClass("is-art-swapping").removeAttr("data-art-swap");
-        document.dispatchEvent(new CustomEvent("lastfm:art-updated"));
+        document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
       }, ART_CROSSFADE_MS);
     });
   };
@@ -1221,8 +1292,8 @@ function swapAlbumArt($artOrImg, newSrc, alt, options) {
   if ($front[0].complete && $front.attr("src") === newSrc && $front[0].naturalWidth > 0) {
     reveal();
   } else {
-    $front.one("load.lastfmArtFade", reveal);
-    $front.one("error.lastfmArtFade", () => {
+    $front.one("load.nowPlayingArtFade", reveal);
+    $front.one("error.nowPlayingArtFade", () => {
       if (seq !== artSwapSeq || $art.attr("data-art-swap") !== String(seq)) return;
       // Failed load - stay empty for this track; do NOT resurrect the previous cover
       $front.removeClass("is-visible").removeAttr("src");
@@ -1243,52 +1314,52 @@ function updateCardInPlace(track, options) {
   const isPlaying = !!(track["@attr"] && track["@attr"].nowplaying);
   const albumArt = getAlbumArtUrl(track);
   const timeString = formatTimeString(track.date);
-  const $card = lastFmContainer.find(".lastfm-card").not(".error");
+  const $card = nowPlayingContainer.find(".now-playing-card").not(".error");
 
   // Placeholder "Connecting..." card has no track structure - force a full render
-  if (!$card.length || !$card.find(".lastfm-content").length || !$card.find(".track-name").length) {
+  if (!$card.length || !$card.find(".now-playing-content").length || !$card.find(".track-name").length) {
     return false;
   }
 
-  const $content = $card.find(".lastfm-content");
-  let $main = $content.children(".lastfm-main");
+  const $content = $card.find(".now-playing-content");
+  let $main = $content.children(".now-playing-main");
 
   // Migrate older card markup into main once
   if (!$main.length) {
-    const $status = $content.children(".lastfm-status").detach();
-    const $track = $content.children(".lastfm-track").detach();
-    const $timeLegacy = $content.find(".lastfm-time").first().detach();
+    const $status = $content.children(".now-playing-status").detach();
+    const $track = $content.children(".now-playing-track").detach();
+    const $timeLegacy = $content.find(".now-playing-time").first().detach();
     const $albumLegacy = $content.find(".track-album").first().detach();
-    $content.find(".lastfm-meta, .lastfm-aside, .track-album").remove();
-    $content.empty().append('<div class="lastfm-main"></div>');
-    $main = $content.children(".lastfm-main");
+    $content.find(".now-playing-aside, .track-album").remove();
+    $content.empty().append('<div class="now-playing-main"></div>');
+    $main = $content.children(".now-playing-main");
     if ($status.length) $main.append($status);
     if ($track.length) {
       if ($albumLegacy.length) $track.find(".track-link").append($albumLegacy);
       $main.append($track);
     }
     if ($status.length) {
-      $status.append($timeLegacy.length ? $timeLegacy : '<span class="lastfm-time" hidden></span>');
+      $status.append($timeLegacy.length ? $timeLegacy : '<span class="now-playing-time" hidden></span>');
     }
   }
 
-  let $track = $main.children(".lastfm-track");
+  let $track = $main.children(".now-playing-track");
   if (!$track.length) {
-    $track = $main.find(".lastfm-track").first();
+    $track = $main.find(".now-playing-track").first();
   }
 
   // Aside lives beside the byline (not card-bottom absolute)
-  let $aside = $track.children(".lastfm-aside");
+  let $aside = $track.children(".now-playing-aside");
   if (!$aside.length) {
     const $asideLegacy = $card
-      .find(".lastfm-aside")
-      .add($content.find(".lastfm-aside"))
+      .find(".now-playing-aside")
+      .add($content.find(".now-playing-aside"))
       .first()
       .detach();
     $aside = $asideLegacy.length
       ? $asideLegacy
       : $(
-          '<div class="lastfm-aside"><div class="lastfm-plays" hidden></div><div class="lastfm-lifetime" hidden></div></div>'
+          '<div class="now-playing-aside"><div class="now-playing-plays" hidden></div><div class="now-playing-lifetime" hidden></div></div>'
         );
     if ($track.length) {
       $track.append($aside);
@@ -1297,29 +1368,29 @@ function updateCardInPlace(track, options) {
     }
   }
   // Remove any duplicate asides left on the card
-  $card.children(".lastfm-aside").remove();
-  $content.children(".lastfm-aside").remove();
+  $card.children(".now-playing-aside").remove();
+  $content.children(".now-playing-aside").remove();
 
-  if (!$card.children(".lastfm-live").length) {
+  if (!$card.children(".now-playing-live").length) {
     $card.append(
-      `<a href="https://last.fm/user/${username}" target="_blank" rel="noopener" class="lastfm-live" data-sound-hover>Data from Last.fm</a>`
+      `<a href="https://last.fm/user/${username}" target="_blank" rel="noopener" class="now-playing-live" data-sound-hover>Data from Last.fm</a>`
     );
   }
 
-  const $status = $main.find(".lastfm-status");
-  let $time = $status.children(".lastfm-time");
+  const $status = $main.find(".now-playing-status");
+  let $time = $status.children(".now-playing-time");
   if (!$time.length) {
     // Move stray time nodes into the status row
-    const $strayTime = $main.find(".lastfm-time").first().detach();
-    $time = $strayTime.length ? $strayTime : $('<span class="lastfm-time" hidden></span>');
+    const $strayTime = $main.find(".now-playing-time").first().detach();
+    $time = $strayTime.length ? $strayTime : $('<span class="now-playing-time" hidden></span>');
     if ($time.is("div")) {
       const label = $time.text();
       const hidden = $time.prop("hidden");
-      $time = $('<span class="lastfm-time"></span>').text(label).prop("hidden", hidden);
+      $time = $('<span class="now-playing-time"></span>').text(label).prop("hidden", hidden);
     }
     $status.append($time);
   }
-  $main.children(".lastfm-time").remove();
+  $main.children(".now-playing-time").remove();
 
   const $link = $main.find(".track-link");
   let $byline = $link.children(".track-byline");
@@ -1336,11 +1407,11 @@ function updateCardInPlace(track, options) {
   }
   $aside.find(".track-album").remove();
 
-  if (!$aside.find(".lastfm-plays").length) {
-    $aside.append('<div class="lastfm-plays" hidden></div>');
+  if (!$aside.find(".now-playing-plays").length) {
+    $aside.append('<div class="now-playing-plays" hidden></div>');
   }
-  if (!$aside.find(".lastfm-lifetime").length) {
-    $aside.append('<div class="lastfm-lifetime" hidden></div>');
+  if (!$aside.find(".now-playing-lifetime").length) {
+    $aside.append('<div class="now-playing-lifetime" hidden></div>');
   }
 
   const prevTitle = $card.find(".track-name").text();
@@ -1359,16 +1430,16 @@ function updateCardInPlace(track, options) {
     $time.text("").prop("hidden", true);
   }
 
-  let $art = $card.find(".lastfm-artwork");
+  let $art = $card.find(".now-playing-artwork");
   if (!$art.length) {
     $card.prepend(`
-      <div class="lastfm-artwork">
-        <img class="lastfm-art-layer lastfm-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />
-        <img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />
+      <div class="now-playing-artwork">
+        <img class="now-playing-art-layer now-playing-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />
+        <img class="now-playing-art-layer now-playing-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />
         <canvas class="dither-overlay-canvas" aria-hidden="true"></canvas>
       </div>
     `);
-    $art = $card.find(".lastfm-artwork");
+    $art = $card.find(".now-playing-artwork");
   }
 
   ensureArtLayers($art);
@@ -1396,13 +1467,13 @@ async function updateLastFmData() {
   if (recentTracks.length === 0) {
     lastTrackIdentity = "";
     displayMessage(`
-            <div class="lastfm-card error">
-                <div class="lastfm-status">
+            <div class="now-playing-card error">
+                <div class="now-playing-status">
                     <span class="status-text">Unable to load</span>
                 </div>
             </div>
         `);
-    document.dispatchEvent(new CustomEvent("lastfm:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
     return;
   }
 
@@ -1413,9 +1484,9 @@ async function updateLastFmData() {
   const artKey = trackArtKey(latestSong);
   // Never in-place-patch a Spotify card - remount Last.fm markup instead
   const hasCard =
-    lastFmContainer.find(".lastfm-card").not(".error").not(".spotify-live").length > 0;
+    nowPlayingContainer.find(".now-playing-card").not(".error").not(".spotify-live").length > 0;
   const trackChanged = identity !== lastTrackIdentity;
-  const $art = lastFmContainer.find(".lastfm-artwork");
+  const $art = nowPlayingContainer.find(".now-playing-artwork");
   const artBroken = isDisplayedArtBroken($art);
 
   if (hasCard && !trackChanged) {
@@ -1423,12 +1494,12 @@ async function updateLastFmData() {
     updateCardInPlace(latestSong, { art: artBroken });
   } else if (hasCard && updateCardInPlace(latestSong, { art: true })) {
     lastTrackIdentity = identity;
-    document.dispatchEvent(new CustomEvent("lastfm:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
   } else {
     lastTrackIdentity = identity;
     displayMessage(formatMessage(latestSong));
     syncCardBackground(getAlbumArtUrl(latestSong));
-    document.dispatchEvent(new CustomEvent("lastfm:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
   }
 
   // Album / plays / lifetime - never block the card paint
@@ -1442,7 +1513,7 @@ async function updateLastFmData() {
   if (!displayArt) return;
 
   latestSong._albumArt = displayArt;
-  const liveArt = lastFmContainer.find(".lastfm-artwork");
+  const liveArt = nowPlayingContainer.find(".now-playing-artwork");
   const showing = getDisplayedArtUrl(liveArt);
   const broken = isDisplayedArtBroken(liveArt);
   const ownerMismatch = (liveArt.attr("data-art-for") || "") !== artKey;
@@ -1451,7 +1522,7 @@ async function updateLastFmData() {
   if (broken || !showing || ownerMismatch || (trackChanged && showing !== displayArt)) {
     updateCardInPlace(latestSong, { art: true });
   }
-  document.dispatchEvent(new CustomEvent("lastfm:art-updated"));
+  document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
 }
 
 function updatePage() {
@@ -1551,7 +1622,7 @@ function computeSpotifyProgress() {
 }
 
 function applySpotifyProgressDom() {
-  const $card = lastFmContainer.find(".lastfm-card.spotify-live").not(".error");
+  const $card = nowPlayingContainer.find(".now-playing-card.spotify-live").not(".error");
   if (!$card.length || !spotifySnap) return;
   const { progress, duration, pct } = computeSpotifyProgress();
   $card.find(".spotify-progress-fill").css("width", `${pct}%`);
@@ -1610,24 +1681,24 @@ function formatSpotifyMessage(payload) {
   })();
 
   return `
-        <div class="lastfm-card spotify-live ${statusClass}">
-            <div class="lastfm-card-bg" aria-hidden="true"><div class="lastfm-card-bg-wash"></div></div>
-            <div class="lastfm-artwork"${albumArt ? ` data-art-url="${safeArt}" data-art-for="${artKey}"` : ` data-art-for="${artKey}"`}>
+        <div class="now-playing-card spotify-live ${statusClass}">
+            <div class="now-playing-card-bg" aria-hidden="true"><div class="now-playing-card-bg-wash"></div></div>
+            <div class="now-playing-artwork"${albumArt ? ` data-art-url="${safeArt}" data-art-for="${artKey}"` : ` data-art-for="${artKey}"`}>
               ${
                 albumArt
-                  ? `<img class="lastfm-art-layer lastfm-art-front is-visible" src="${safeArt}" alt="${safeName}" decoding="async" fetchpriority="high" referrerpolicy="no-referrer" />
-              <img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
-                  : `<img class="lastfm-art-layer lastfm-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />
-              <img class="lastfm-art-layer lastfm-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
+                  ? `<img class="now-playing-art-layer now-playing-art-front is-visible" src="${safeArt}" alt="${safeName}" decoding="async" fetchpriority="high" referrerpolicy="no-referrer" />
+              <img class="now-playing-art-layer now-playing-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
+                  : `<img class="now-playing-art-layer now-playing-art-front" alt="" decoding="async" referrerpolicy="no-referrer" />
+              <img class="now-playing-art-layer now-playing-art-back" alt="" decoding="async" referrerpolicy="no-referrer" aria-hidden="true" />`
               }
               <canvas class="dither-overlay-canvas" aria-hidden="true"></canvas>
             </div>
-            <div class="lastfm-content">
-                <div class="lastfm-main">
-                    <div class="lastfm-status">
+            <div class="now-playing-content">
+                <div class="now-playing-main">
+                    <div class="now-playing-status">
                         <span class="status-text">${statusText}</span>
                     </div>
-                    <div class="lastfm-track">
+                    <div class="now-playing-track">
                         <a href="${safeUrl}" target="_blank" rel="noopener" class="track-link">
                             <div class="track-name" data-sound-hover>${safeName}</div>
                             <div class="track-byline">
@@ -1645,21 +1716,21 @@ function formatSpotifyMessage(payload) {
                                 <span class="spotify-elapsed">${formatClock(progress)}</span>
                                 <span class="spotify-duration">${formatClock(duration)}</span>
                             </div>
-                            <div class="lastfm-aside">
-                                <div class="lastfm-plays" hidden></div>
-                                <div class="lastfm-previous lastfm-lifetime" hidden></div>
+                            <div class="now-playing-aside">
+                                <div class="now-playing-plays" hidden></div>
+                                <div class="now-playing-previous now-playing-lifetime" hidden></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            <a href="${safeUrl}" target="_blank" rel="noopener" class="lastfm-live" data-sound-hover>Data from Spotify</a>
+            <a href="${safeUrl}" target="_blank" rel="noopener" class="now-playing-live" data-sound-hover>Data from Spotify</a>
         </div>
     `;
 }
 
 function patchSpotifyCardInPlace(payload) {
-  const $card = lastFmContainer.find(".lastfm-card.spotify-live").not(".error");
+  const $card = nowPlayingContainer.find(".now-playing-card.spotify-live").not(".error");
   if (!$card.length) return false;
 
   const track = payload.track || {};
@@ -1677,8 +1748,8 @@ function patchSpotifyCardInPlace(payload) {
   else $album.text("").prop("hidden", true);
 
   const trackUrl = track.url || "https://open.spotify.com";
-  $card.find("a.track-link, a.lastfm-live").attr("href", trackUrl);
-  $card.find("a.lastfm-live").text("Data from Spotify");
+  $card.find("a.track-link, a.now-playing-live").attr("href", trackUrl);
+  $card.find("a.now-playing-live").text("Data from Spotify");
 
   applySpotifyProgressDom();
   return true;
@@ -1691,19 +1762,19 @@ async function enrichSpotifyAside(track, previous) {
   spotifyAsideKey = key;
 
   const prevLabel = formatPreviousLine(previous);
-  const $prev = lastFmContainer.find(".lastfm-previous, .lastfm-lifetime").first();
+  const $prev = nowPlayingContainer.find(".now-playing-previous, .now-playing-lifetime").first();
   if ($prev.length) {
     if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
     else $prev.text("").prop("hidden", true);
   }
 
-  document.dispatchEvent(new CustomEvent("lastfm:updated"));
+  document.dispatchEvent(new CustomEvent("now-playing:updated"));
 
   try {
     const playcount = await fetchTrackUserPlaycount(artist, name).catch(() => "");
     if (spotifyAsideKey !== key) return;
     patchCardPlays(formatPlayCount(playcount));
-    document.dispatchEvent(new CustomEvent("lastfm:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
   } catch (err) {
     console.warn("Spotify/Last.fm playcount enrich failed:", err);
   }
@@ -1743,12 +1814,12 @@ async function applySpotifyPayload(payload) {
     is_playing: !!payload.is_playing
   };
 
-  const hasCard = lastFmContainer.find(".lastfm-card.spotify-live").not(".error").length > 0;
+  const hasCard = nowPlayingContainer.find(".now-playing-card.spotify-live").not(".error").length > 0;
 
   if (hasCard && !trackChanged) {
     patchSpotifyCardInPlace(payload);
     const prevLabel = formatPreviousLine(payload.previous);
-    const $prev = lastFmContainer.find(".lastfm-previous, .lastfm-lifetime").first();
+    const $prev = nowPlayingContainer.find(".now-playing-previous, .now-playing-lifetime").first();
     if ($prev.length && prevLabel) $prev.text(prevLabel).prop("hidden", false);
     // Keep / repair art gradient regardless of play/pause
     syncCardBackground(track.art_url || "");
@@ -1757,8 +1828,8 @@ async function applySpotifyPayload(payload) {
     lastTrackIdentity = `spotify|${trackId}|${payload.is_playing ? 1 : 0}`;
     displayMessage(formatSpotifyMessage(payload));
     syncCardBackground(track.art_url || "");
-    document.dispatchEvent(new CustomEvent("lastfm:updated"));
-    document.dispatchEvent(new CustomEvent("lastfm:art-updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
     enrichSpotifyAside(track, payload.previous);
   }
 

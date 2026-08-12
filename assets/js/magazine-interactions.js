@@ -3,7 +3,7 @@
 
   // ============================================
   // SHARED NARROW LAYOUT
-  // One detector drives masthead + Last.fm compact chrome.
+  // One detector drives masthead + now-playing compact chrome.
   // Triggers when full chrome would collide / wrap - not a fixed px guess.
   // ============================================
   const NARROW_LAYOUT_FLOOR_MQ = '(max-width: 768px)';
@@ -59,9 +59,9 @@
     return false;
   }
 
-  function isLastfmCramped() {
-    const card = document.querySelector('.lastfm-card:not(.error)');
-    const aside = card && card.querySelector('.lastfm-aside');
+  function isNowPlayingCramped() {
+    const card = document.querySelector('.now-playing-card:not(.error)');
+    const aside = card && card.querySelector('.now-playing-aside');
     if (!card || !aside) return false;
 
     const asideRect = aside.getBoundingClientRect();
@@ -69,7 +69,7 @@
 
     // Only collide against visible aside meta
     const hasAsideMeta = Array.prototype.some.call(
-      aside.querySelectorAll('.lastfm-plays, .lastfm-lifetime'),
+      aside.querySelectorAll('.now-playing-plays, .now-playing-lifetime'),
       (el) => !el.hasAttribute('hidden') && el.textContent.trim()
     );
     if (!hasAsideMeta) return false;
@@ -97,7 +97,7 @@
     const needsNarrow =
       narrowLayoutFloorMq.matches ||
       isMastheadCramped(minGap) ||
-      isLastfmCramped();
+      isNowPlayingCramped();
 
     narrowLayoutActive = needsNarrow;
     root.classList.toggle('is-narrow-layout', needsNarrow);
@@ -118,16 +118,16 @@
   } else if (typeof narrowLayoutFloorMq.addListener === 'function') {
     narrowLayoutFloorMq.addListener(scheduleNarrowLayoutSync);
   }
-  document.addEventListener('lastfm:updated', scheduleNarrowLayoutSync);
-  document.addEventListener('lastfm:art-updated', scheduleNarrowLayoutSync);
+  document.addEventListener('now-playing:updated', scheduleNarrowLayoutSync);
+  document.addEventListener('now-playing:art-updated', scheduleNarrowLayoutSync);
 
   if (typeof ResizeObserver === 'function') {
     const narrowLayoutRo = new ResizeObserver(scheduleNarrowLayoutSync);
     const observeNarrowTargets = () => {
       const masthead = document.querySelector('.masthead-inner');
-      const lastfm = document.querySelector('.lastfm-widget');
+      const nowPlaying = document.querySelector('.now-playing-widget');
       if (masthead) narrowLayoutRo.observe(masthead);
-      if (lastfm) narrowLayoutRo.observe(lastfm);
+      if (nowPlaying) narrowLayoutRo.observe(nowPlaying);
     };
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', observeNarrowTargets, { once: true });
@@ -1920,40 +1920,40 @@
       }
     }
 
-    // 2) Last.fm artwork - dither while visible; freeze last frame when offscreen/hidden
+    // 2) Now-playing artwork - dither while visible; freeze last frame when offscreen/hidden
     if (!prefersReducedMotion) {
-      let lastFmDitherController = null;
-      let lastFmCorsObjectUrl = null;
-      let lastFmInView = true;
-      let lastFmArtEl = null;
-      let lastFmIo = null;
+      let nowPlayingDitherController = null;
+      let nowPlayingCorsObjectUrl = null;
+      let nowPlayingInView = true;
+      let nowPlayingArtEl = null;
+      let nowPlayingIo = null;
 
-      function revokeLastFmCorsUrl() {
-        if (lastFmCorsObjectUrl) {
-          URL.revokeObjectURL(lastFmCorsObjectUrl);
-          lastFmCorsObjectUrl = null;
+      function revokeNowPlayingCorsUrl() {
+        if (nowPlayingCorsObjectUrl) {
+          URL.revokeObjectURL(nowPlayingCorsObjectUrl);
+          nowPlayingCorsObjectUrl = null;
         }
       }
 
-      function syncLastFmDitherPlayback() {
-        if (!lastFmDitherController) return;
-        if (lastFmInView && !document.hidden) lastFmDitherController.resume();
-        else lastFmDitherController.pause();
+      function syncNowPlayingDitherPlayback() {
+        if (!nowPlayingDitherController) return;
+        if (nowPlayingInView && !document.hidden) nowPlayingDitherController.resume();
+        else nowPlayingDitherController.pause();
       }
 
-      function observeLastFmArt(art) {
-        if (lastFmArtEl === art && lastFmIo) return;
-        if (lastFmIo) {
-          lastFmIo.disconnect();
-          lastFmIo = null;
+      function observeNowPlayingArt(art) {
+        if (nowPlayingArtEl === art && nowPlayingIo) return;
+        if (nowPlayingIo) {
+          nowPlayingIo.disconnect();
+          nowPlayingIo = null;
         }
-        lastFmArtEl = art;
+        nowPlayingArtEl = art;
         if (!art) return;
-        lastFmIo = new IntersectionObserver((entries) => {
-          lastFmInView = entries.some((entry) => entry.isIntersecting);
-          syncLastFmDitherPlayback();
+        nowPlayingIo = new IntersectionObserver((entries) => {
+          nowPlayingInView = entries.some((entry) => entry.isIntersecting);
+          syncNowPlayingDitherPlayback();
         }, { threshold: 0.01, rootMargin: '80px 0px' });
-        lastFmIo.observe(art);
+        nowPlayingIo.observe(art);
       }
 
       async function loadCorsImageSource(url) {
@@ -1980,18 +1980,18 @@
         }
       }
 
-      async function bindLastFmDither() {
-        if (lastFmDitherController) {
-          lastFmDitherController.destroy();
-          lastFmDitherController = null;
+      async function bindNowPlayingDither() {
+        if (nowPlayingDitherController) {
+          nowPlayingDitherController.destroy();
+          nowPlayingDitherController = null;
         }
-        revokeLastFmCorsUrl();
+        revokeNowPlayingCorsUrl();
 
-        const art = document.querySelector('.lastfm-artwork');
+        const art = document.querySelector('.now-playing-artwork');
         const canvas = art && art.querySelector('.dither-overlay-canvas');
         const img =
           art &&
-          (art.querySelector('img.lastfm-art-front') || art.querySelector('img'));
+          (art.querySelector('img.now-playing-art-front') || art.querySelector('img'));
         if (!art || !canvas || !img || !img.getAttribute('src')) {
           if (canvas) canvas.style.opacity = '0';
           if (art) art.classList.remove('is-dithering');
@@ -1999,7 +1999,7 @@
         }
 
         // Dither only while Now Playing - Last Played shows clean cover art
-        const card = art.closest('.lastfm-card');
+        const card = art.closest('.now-playing-card');
         if (!card || !card.classList.contains('playing')) {
           canvas.style.opacity = '0';
           art.classList.remove('is-dithering');
@@ -2039,7 +2039,7 @@
           return;
         }
 
-        lastFmCorsObjectUrl = corsUrl;
+        nowPlayingCorsObjectUrl = corsUrl;
         const ditherImg = new Image();
         ditherImg.decoding = 'async';
         ditherImg.src = corsUrl;
@@ -2055,7 +2055,7 @@
 
         if (!ditherImg.naturalWidth || !img.isConnected) {
           canvas.style.opacity = '0';
-          revokeLastFmCorsUrl();
+          revokeNowPlayingCorsUrl();
           return;
         }
 
@@ -2070,27 +2070,27 @@
 
         img.style.opacity = '1';
 
-        lastFmDitherController = {
+        nowPlayingDitherController = {
           pause() { controller.pause(); },
           resume() { controller.resume(); },
           invalidate() { controller.invalidate(); },
           startLoop() { controller.startLoop(); },
           destroy() {
             controller.destroy();
-            revokeLastFmCorsUrl();
+            revokeNowPlayingCorsUrl();
           }
         };
 
-        observeLastFmArt(art);
+        observeNowPlayingArt(art);
         controller.startLoop();
         // Freeze immediately if tab is backgrounded; IO handles offscreen after first paint
         if (document.hidden) controller.pause();
       }
 
-      document.addEventListener('visibilitychange', syncLastFmDitherPlayback);
-      document.addEventListener('lastfm:updated', () => { bindLastFmDither(); });
-      document.addEventListener('lastfm:art-updated', () => { bindLastFmDither(); });
-      bindLastFmDither();
+      document.addEventListener('visibilitychange', syncNowPlayingDitherPlayback);
+      document.addEventListener('now-playing:updated', () => { bindNowPlayingDither(); });
+      document.addEventListener('now-playing:art-updated', () => { bindNowPlayingDither(); });
+      bindNowPlayingDither();
     }
 
     // 3) Portfolio scroll-in dither reveal - desktop only
