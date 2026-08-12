@@ -1773,13 +1773,14 @@ function formatLiveMessage(payload, opts) {
   const statusPaused = options.statusPaused || "Paused";
   const attribution = options.attribution || "Data from Spotify";
   const fallbackUrl = options.fallbackUrl || "https://open.spotify.com";
+  const linkable = options.linkable !== false;
 
   const track = payload.track || {};
   const songName = track.name || "";
   const artistName = artistsLabel(track.artists);
   const albumName = track.album || "";
   const albumArt = track.art_url || "";
-  const trackUrl = track.url || fallbackUrl;
+  const trackUrl = linkable ? track.url || fallbackUrl : "";
   const isPlaying = !!payload.is_playing;
   const statusClass = isPlaying ? "playing" : "paused";
   const statusText = isPlaying ? statusPlaying : statusPaused;
@@ -1805,6 +1806,21 @@ function formatLiveMessage(payload, opts) {
     };
   })();
 
+  const trackInner = `
+                            <div class="track-name" data-sound-hover>${safeName}</div>
+                            <div class="track-byline">
+                                <div class="track-artist">${safeArtist}</div>
+                                <div class="track-album"${albumName ? "" : " hidden"}>${safeAlbum}</div>
+                            </div>`;
+  const trackBlock = linkable
+    ? `<a href="${safeUrl}" target="_blank" rel="noopener" class="track-link">${trackInner}
+                        </a>`
+    : `<div class="track-link track-link--nolink">${trackInner}
+                        </div>`;
+  const liveBlock = linkable
+    ? `<a href="${safeUrl}" target="_blank" rel="noopener" class="now-playing-live" data-sound-hover>${escapeHtml(attribution)}</a>`
+    : `<span class="now-playing-live now-playing-live--nolink">${escapeHtml(attribution)}</span>`;
+
   return `
         <div class="now-playing-card ${sourceClass} ${statusClass}">
             <div class="now-playing-card-bg" aria-hidden="true"><div class="now-playing-card-bg-wash"></div></div>
@@ -1824,13 +1840,7 @@ function formatLiveMessage(payload, opts) {
                         <span class="status-text">${statusText}</span>
                     </div>
                     <div class="now-playing-track">
-                        <a href="${safeUrl}" target="_blank" rel="noopener" class="track-link">
-                            <div class="track-name" data-sound-hover>${safeName}</div>
-                            <div class="track-byline">
-                                <div class="track-artist">${safeArtist}</div>
-                                <div class="track-album"${albumName ? "" : " hidden"}>${safeAlbum}</div>
-                            </div>
-                        </a>
+                        ${trackBlock}
                     </div>
                     <div class="spotify-progress" aria-hidden="true">
                         <div class="spotify-progress-track">
@@ -1849,7 +1859,7 @@ function formatLiveMessage(payload, opts) {
                     </div>
                 </div>
             </div>
-            <a href="${safeUrl}" target="_blank" rel="noopener" class="now-playing-live" data-sound-hover>${escapeHtml(attribution)}</a>
+            ${liveBlock}
         </div>
     `;
 }
@@ -1861,6 +1871,7 @@ function patchLiveCardInPlace(payload, opts) {
   const statusPaused = options.statusPaused || "Paused";
   const attribution = options.attribution || "Data from Spotify";
   const fallbackUrl = options.fallbackUrl || "https://open.spotify.com";
+  const linkable = options.linkable !== false;
 
   const $card = nowPlayingContainer.find(`.now-playing-card.${cardClass}`).not(".error");
   if (!$card.length) return false;
@@ -1879,9 +1890,11 @@ function patchLiveCardInPlace(payload, opts) {
   if (albumName) $album.text(albumName).prop("hidden", false);
   else $album.text("").prop("hidden", true);
 
-  const trackUrl = track.url || fallbackUrl;
-  $card.find("a.track-link, a.now-playing-live").attr("href", trackUrl);
-  $card.find("a.now-playing-live").text(attribution);
+  if (linkable) {
+    const trackUrl = track.url || fallbackUrl;
+    $card.find("a.track-link, a.now-playing-live").attr("href", trackUrl);
+  }
+  $card.find(".now-playing-live").text(attribution);
 
   applyLiveProgressDom();
   return true;
@@ -1975,7 +1988,7 @@ async function applyAbsPayload(payload) {
     statusPlaying: "Listening",
     statusPaused: "Paused",
     attribution: "Data from Audiobookshelf",
-    fallbackUrl: "https://audiobooks.dannyvoid.com"
+    linkable: false
   };
 
   if (hasCard && !trackChanged) {

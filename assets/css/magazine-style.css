@@ -968,6 +968,17 @@ img {
   border-bottom: none;
 }
 
+.now-playing-live.now-playing-live--nolink,
+.now-playing-live.now-playing-live--nolink:hover {
+  color: var(--color-accent);
+  cursor: default;
+}
+
+.now-playing-track .track-link.track-link--nolink {
+  cursor: default;
+  pointer-events: none;
+}
+
 .now-playing-track {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
