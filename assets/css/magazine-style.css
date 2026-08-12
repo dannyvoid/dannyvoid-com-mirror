@@ -1148,10 +1148,11 @@ img {
 }
 
 .spotify-progress-footer {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: start;
-  column-gap: 0.75rem;
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin-top: 0.25rem;
   min-width: 0;
   font-family: var(--font-mono);
@@ -1162,28 +1163,40 @@ img {
 }
 
 .spotify-progress-footer .spotify-elapsed {
-  justify-self: start;
+  flex: 0 0 auto;
+  z-index: 1;
+}
+
+.spotify-progress-center {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  z-index: 0;
+  max-width: min(12rem, 46%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.spotify-progress-end {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.15rem;
+  text-align: right;
+  z-index: 1;
+  max-width: min(16rem, 42%);
+  margin-left: auto;
 }
 
 .spotify-progress-footer .spotify-duration {
-  justify-self: end;
-  text-align: right;
+  display: block;
 }
 
 /* Spotify progress chrome; shared card type is already compact above. */
-.now-playing-card.spotify-live .spotify-progress-footer .now-playing-aside {
-  position: static;
-  justify-self: center;
-  align-items: center;
-  text-align: center;
-  max-width: min(16rem, 52%);
-  margin: 0;
-  pointer-events: none;
-  gap: 0.15rem;
-}
-
-.now-playing-card.spotify-live .now-playing-plays,
-.now-playing-card.spotify-live .now-playing-previous {
+.now-playing-card.spotify-live .spotify-progress-center .now-playing-plays,
+.now-playing-card.spotify-live .spotify-progress-end .now-playing-previous {
   font-size: 0.6875rem;
   line-height: 1.2;
 }

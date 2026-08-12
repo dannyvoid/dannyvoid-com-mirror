@@ -974,7 +974,9 @@ function patchCardAlbum(albumName) {
 }
 
 function patchCardPlays(playsLabel) {
-  const $plays = nowPlayingContainer.find(".now-playing-plays");
+  const $plays = nowPlayingContainer.find(
+    ".spotify-progress-center .now-playing-plays, .now-playing-plays"
+  ).first();
   if (!$plays.length) return;
   if (playsLabel) {
     $plays.text(playsLabel).prop("hidden", false);
@@ -1720,11 +1722,13 @@ function formatSpotifyMessage(payload) {
                         </div>
                         <div class="spotify-progress-footer">
                             <span class="spotify-elapsed">${formatClock(progress)}</span>
-                            <div class="now-playing-aside">
+                            <div class="spotify-progress-center">
                                 <div class="now-playing-plays" hidden></div>
+                            </div>
+                            <div class="spotify-progress-end">
+                                <span class="spotify-duration">${formatClock(duration)}</span>
                                 <div class="now-playing-previous" hidden></div>
                             </div>
-                            <span class="spotify-duration">${formatClock(duration)}</span>
                         </div>
                     </div>
                 </div>
@@ -1760,25 +1764,36 @@ function patchSpotifyCardInPlace(payload) {
   return true;
 }
 
-async function enrichSpotifyAside(track, previous) {
+async function enrichSpotifyAside(track, previous, opts) {
+  const options = opts || {};
   const artist = artistsLabel(track && track.artists);
   const name = track && track.name;
   const key = `${artist}|${name}`;
   spotifyAsideKey = key;
 
-  const prevLabel = formatPreviousLine(previous);
-  const $prev = nowPlayingContainer.find(".now-playing-previous").first();
-  if ($prev.length) {
-    if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
-    else $prev.text("").prop("hidden", true);
+  if (!options.playsOnly) {
+    const prevLabel = formatPreviousLine(previous);
+    const $prev = nowPlayingContainer.find(".now-playing-previous").first();
+    if ($prev.length) {
+      if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
+      else $prev.text("").prop("hidden", true);
+    }
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
   }
 
-  document.dispatchEvent(new CustomEvent("now-playing:updated"));
+  const $plays = nowPlayingContainer.find(".spotify-progress-center .now-playing-plays, .now-playing-plays").first();
+  const playsAlreadyShown =
+    $plays.length &&
+    !$plays.is("[hidden]") &&
+    !!String($plays.text() || "").trim();
+  if (options.retryPlays && playsAlreadyShown) return;
 
   try {
     const playcount = await fetchTrackUserPlaycount(artist, name).catch(() => "");
     if (spotifyAsideKey !== key || musicSource !== "spotify") return;
-    patchCardPlays(formatPlayCount(playcount));
+    const label = formatPlayCount(playcount);
+    if (!label && options.retryPlays) return;
+    patchCardPlays(label);
     document.dispatchEvent(new CustomEvent("now-playing:updated"));
   } catch (err) {
     console.warn("Spotify/Last.fm playcount enrich failed:", err);
@@ -1831,6 +1846,11 @@ async function applySpotifyPayload(payload) {
     }
     // Keep / repair art gradient regardless of play/pause
     syncCardBackground(track.art_url || "");
+    // Last.fm playcount is one-shot and can miss - retry while still empty
+    enrichSpotifyAside(track, payload.previous, {
+      playsOnly: true,
+      retryPlays: true
+    });
   } else {
     spotifyTrackId = trackId;
     lastTrackIdentity = `spotify|${trackId}|${payload.is_playing ? 1 : 0}`;
