@@ -976,7 +976,6 @@ function formatMessage(track) {
             <div class="lastfm-content">
                 <div class="lastfm-main">
                     <div class="lastfm-status">
-                        <span class="status-indicator"></span>
                         <span class="status-text">${statusText}</span>
                         <span class="lastfm-time"${timeString ? "" : " hidden"}>${escapeHtml(timeString)}</span>
                     </div>
@@ -1622,7 +1621,6 @@ function formatSpotifyMessage(payload) {
             <div class="lastfm-content">
                 <div class="lastfm-main">
                     <div class="lastfm-status">
-                        <span class="status-indicator"></span>
                         <span class="status-text">${statusText}</span>
                     </div>
                     <div class="lastfm-track">

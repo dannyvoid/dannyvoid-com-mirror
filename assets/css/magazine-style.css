@@ -928,13 +928,18 @@ img {
   z-index: 1;
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  min-height: 0;
 }
 
 .lastfm-main {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.15rem;
   min-width: 0;
+  justify-content: center;
+  overflow: visible;
 }
 
 .lastfm-live {
@@ -993,24 +998,12 @@ img {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.5rem 0.75rem;
-  font-size: 1rem;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.8125rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-weight: 700;
-}
-
-.status-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-accent);
-  opacity: 0.45;
-}
-
-.lastfm-card.playing .status-indicator {
-  background: var(--color-accent);
-  opacity: 1;
+  line-height: 1.2;
 }
 
 .lastfm-track a {
@@ -1021,17 +1014,17 @@ img {
 .track-name {
   grid-area: name;
   font-family: var(--font-serif);
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: var(--font-serif-weight);
-  margin-bottom: 0.5rem;
-  line-height: 1.3;
+  margin-bottom: 0.1rem;
+  line-height: 1.2;
   /* Prefer wrapping over ellipsis; clamp only absurdly long titles */
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 1;
   overflow: hidden;
 }
 
@@ -1046,7 +1039,7 @@ img {
 
 .track-artist {
   font-family: var(--font-serif);
-  font-size: 1.25rem;
+  font-size: 1.125rem;
   color: var(--color-gray-600);
   font-weight: var(--font-serif-weight);
   font-style: italic;
@@ -1059,7 +1052,7 @@ img {
 
 .track-album {
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   font-weight: 400;
   letter-spacing: 0.04em;
   color: var(--color-gray-500);
@@ -1087,11 +1080,12 @@ img {
 
 .lastfm-time {
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.6875rem;
   color: var(--color-gray-500);
   font-weight: 500;
   letter-spacing: 0.04em;
   text-transform: none;
+  line-height: 1.2;
 }
 
 .lastfm-time:not([hidden])::before {
@@ -1102,21 +1096,22 @@ img {
 
 .lastfm-plays {
   font-family: var(--font-mono);
-  font-size: 0.875rem;
+  font-size: 0.6875rem;
   color: var(--color-gray-500);
   font-weight: 500;
   letter-spacing: 0.04em;
+  line-height: 1.2;
 }
 
 .lastfm-lifetime {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: 0.6875rem;
   font-weight: 400;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-gray-500);
   opacity: 0.85;
-  line-height: 1.35;
+  line-height: 1.2;
   white-space: nowrap;
 }
 
@@ -1174,51 +1169,7 @@ img {
   line-height: 1.2;
 }
 
-/* Prefer art-aligned size via compact type; never clip status/times. */
-.lastfm-card.spotify-live {
-  align-items: center;
-}
-
-.lastfm-card.spotify-live .lastfm-content {
-  display: flex;
-  align-items: center;
-  min-height: 0;
-}
-
-.lastfm-card.spotify-live .lastfm-main {
-  width: 100%;
-  min-height: 0;
-  gap: 0.15rem;
-  overflow: visible;
-  justify-content: center;
-}
-
-.lastfm-card.spotify-live .lastfm-status {
-  font-size: 0.8125rem;
-  gap: 0.35rem 0.5rem;
-  line-height: 1.2;
-}
-
-.lastfm-card.spotify-live .status-indicator {
-  width: 8px;
-  height: 8px;
-}
-
-.lastfm-card.spotify-live .track-name {
-  margin-bottom: 0.1rem;
-  font-size: 1.5rem;
-  line-height: 1.2;
-  -webkit-line-clamp: 1;
-}
-
-.lastfm-card.spotify-live .track-artist {
-  font-size: 1.125rem;
-}
-
-.lastfm-card.spotify-live .track-album {
-  font-size: 0.75rem;
-}
-
+/* Spotify progress chrome; shared card type is already compact above. */
 .lastfm-card.spotify-live .spotify-progress-footer .lastfm-aside {
   position: static;
   max-width: min(16rem, 52%);
@@ -2446,17 +2397,12 @@ html.is-narrow-layout .lastfm-track {
     padding: 2rem;
   }
 
-  .lastfm-card.spotify-live .lastfm-content,
-  .lastfm-card.spotify-live .lastfm-main {
-    max-height: none;
-    overflow: visible;
-  }
-
   .lastfm-content {
     width: 100%;
     padding-right: 0;
     /* Room for absolute "Data from Last.fm" only */
     padding-top: 1.75rem;
+    align-items: flex-start;
   }
 
   .lastfm-live {
@@ -2486,7 +2432,7 @@ html.is-narrow-layout .lastfm-track {
 
   .track-name {
     font-size: 1.5rem;
-    -webkit-line-clamp: 4;
+    -webkit-line-clamp: 1;
   }
   
   .track-artist {
