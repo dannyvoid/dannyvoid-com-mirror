@@ -2068,39 +2068,43 @@ async function tickLiveSources() {
   ]);
 
   let absPayload = abs;
-  let absOk = isUsableLivePayload(absPayload);
+  const absMiss = !abs || !!abs.error;
+  const absIdle = !!(abs && !abs.error && abs.playing === false);
+  let absOk = isUsableLivePayload(absPayload) && !!absPayload.is_playing;
   if (absOk) {
     lastAbsPayload = absPayload;
     lastAbsOkAt = Date.now();
-  } else if (
-    lastAbsPayload &&
-    Date.now() - lastAbsOkAt <= ABS_CLIENT_STICKY_MS
-  ) {
-    // Brief ABS miss/timeout - keep last book unless Spotify is actively playing.
-    absPayload = lastAbsPayload;
-    absOk = true;
-  } else if (!absOk) {
+  } else if (absIdle) {
+    // Explicit idle (paused/stale/hidden) - do not sticky-hold.
     lastAbsPayload = null;
     lastAbsOkAt = 0;
+    absOk = false;
+  } else if (
+    absMiss &&
+    lastAbsPayload &&
+    lastAbsPayload.is_playing &&
+    Date.now() - lastAbsOkAt <= ABS_CLIENT_STICKY_MS
+  ) {
+    // Brief ABS miss/timeout only - keep last active book.
+    absPayload = lastAbsPayload;
+    absOk = true;
+  } else {
+    lastAbsPayload = null;
+    lastAbsOkAt = 0;
+    absOk = false;
   }
 
   const spotOk = isUsableLivePayload(spotify);
-  const absActive = absOk && !!absPayload.is_playing;
   const spotActive = spotOk && !!spotify.is_playing;
 
-  // ABS active > Spotify active > ABS paused > Spotify paused/present > Last.fm
-  if (absActive) {
+  // ABS active > Spotify active > Spotify paused/present > Last.fm
+  // (ABS "paused"/stale openSessions are treated as idle.)
+  if (absOk) {
     await applyAbsPayload(absPayload);
     return;
   }
   if (spotActive) {
-    lastAbsPayload = null;
-    lastAbsOkAt = 0;
     await applySpotifyPayload(spotify);
-    return;
-  }
-  if (absOk) {
-    await applyAbsPayload(absPayload);
     return;
   }
   if (spotOk) {
