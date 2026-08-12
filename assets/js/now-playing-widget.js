@@ -1622,7 +1622,7 @@ function updatePage() {
   setInterval(updateLastFmData, sleepTime);
 }
 
-/* --- Origin live preference (ABS → Spotify); Last.fm path unchanged on failure --- */
+/* --- Origin live preference (ABS -> Spotify); Last.fm path unchanged on failure --- */
 
 const LIVE_POLL_VISIBLE_MS = 2000;
 const LIVE_POLL_HIDDEN_MS = 20000;
