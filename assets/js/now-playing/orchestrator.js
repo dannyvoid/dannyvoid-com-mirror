@@ -111,11 +111,46 @@ function resolveActiveCandidate(source, raw) {
 
 function setLiveSnap(payload) {
   const track = payload.track || {};
+  const serverProgress = Math.max(0, Number(payload.progress_ms) || 0);
+  const duration = Math.max(
+    0,
+    Number(payload.duration_ms) || Number(track.duration_ms) || 0
+  );
+  const isPlaying = !!payload.is_playing;
+  let progress = serverProgress;
+
+  // ABS (and slow polls) often re-send the same progress_ms with a fresh
+  // fetched_at. If we always reset, the clock ticks +1s then snaps back.
+  // Keep monotonic client progress unless the server jumped ahead (seek) or
+  // the duration changed (new chapter / track).
+  const prev = state.liveSnap;
+  if (prev && isPlaying && prev.is_playing) {
+    const sameDuration =
+      Math.abs((Number(prev.duration_ms) || 0) - duration) < 750;
+    if (sameDuration) {
+      let clientProgress = Math.max(0, Number(prev.progress_ms) || 0);
+      clientProgress += Math.max(0, Date.now() - (prev.fetched_at || Date.now()));
+      if (duration > 0) clientProgress = Math.min(clientProgress, duration);
+      const lead = clientProgress - serverProgress;
+      if (lead > 15000) {
+        // Client drifted too far from a stuck snapshot - resync.
+        progress = serverProgress;
+      } else if (serverProgress >= clientProgress) {
+        progress = serverProgress;
+      } else {
+        progress = clientProgress;
+      }
+    }
+  }
+
+  if (duration > 0) progress = Math.min(progress, duration);
+
   state.setLiveSnapValue({
-    progress_ms: Number(payload.progress_ms) || 0,
-    duration_ms: Number(payload.duration_ms) || Number(track.duration_ms) || 0,
-    fetched_at: Number(payload.fetched_at) || Date.now(),
-    is_playing: !!payload.is_playing
+    progress_ms: progress,
+    duration_ms: duration,
+    // Anchor ticks from "now" using the (possibly extrapolated) progress.
+    fetched_at: Date.now(),
+    is_playing: isPlaying
   });
 }
 
