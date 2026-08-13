@@ -256,7 +256,7 @@ function getLastFmImageUrl(track) {
 function normalizeMusicText(str) {
   return String(str || "")
     .toLowerCase()
-    .replace(/['’]/g, "")
+    .replace(/['â€™]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
@@ -1071,7 +1071,7 @@ function patchCardPlays(playsLabel) {
 }
 
 function patchCardLifetime(lifetimeLabel) {
-  // Live origin cards reuse the footer slot for "Last: …" - never write account scrobbles there
+  // Live origin cards reuse the footer slot for "Last: â€¦" - never write account scrobbles there
   if (isLiveOriginSource()) return;
   const $lifetime = nowPlayingContainer.find(".now-playing-lifetime");
   if (!$lifetime.length) return;
@@ -1622,27 +1622,34 @@ function updatePage() {
   setInterval(updateLastFmData, sleepTime);
 }
 
-/* --- Origin live preference (ABS -> Spotify); Last.fm path unchanged on failure --- */
+/* --- Origin live sources (Plex / ABS / Spotify); sticky + freshest; Last.fm on failure --- */
 
 const LIVE_POLL_VISIBLE_MS = 2000;
 const LIVE_POLL_HIDDEN_MS = 20000;
 const LIVE_FETCH_TIMEOUT_MS = 3000;
 const LIVE_PROGRESS_TICK_MS = 250;
-// Keep showing ABS across brief API gaps unless Spotify is actually playing.
-const ABS_CLIENT_STICKY_MS = 45000;
+const LIVE_CLIENT_STICKY_MS = 45000;
 
-let musicSource = null; // "audiobookshelf" | "spotify" | "lastfm"
+let musicSource = null; // "plex" | "audiobookshelf" | "spotify" | "lastfm"
 let lastFmIntervalId = null;
 let livePollTimer = null;
 let liveProgressTimer = null;
 let liveTrackId = "";
 let liveSnap = null;
 let spotifyAsideKey = "";
-let lastAbsPayload = null;
-let lastAbsOkAt = 0;
+/** @type {Record<string, { payload: object, at: number }>} */
+const lastLiveBySource = {
+  plex: { payload: null, at: 0 },
+  audiobookshelf: { payload: null, at: 0 },
+  spotify: { payload: null, at: 0 }
+};
 
 function isLiveOriginSource() {
-  return musicSource === "spotify" || musicSource === "audiobookshelf";
+  return (
+    musicSource === "spotify" ||
+    musicSource === "audiobookshelf" ||
+    musicSource === "plex"
+  );
 }
 
 function stopLastFmPolling() {
@@ -1724,7 +1731,7 @@ function computeLiveProgress() {
 }
 
 function liveCardSelector() {
-  return ".now-playing-card.spotify-live, .now-playing-card.audiobook-live";
+  return ".now-playing-card.spotify-live, .now-playing-card.audiobook-live, .now-playing-card.plex-live";
 }
 
 function applyLiveProgressDom() {
@@ -1762,8 +1769,65 @@ function fetchAbsNowPlaying() {
   return fetchJsonWithTimeout("/api/audiobooks/now-playing");
 }
 
+function fetchPlexNowPlaying() {
+  return fetchJsonWithTimeout("/api/plex/now-playing");
+}
+
 function isUsableLivePayload(payload) {
   return !!(payload && !payload.error && payload.playing && payload.track && payload.track.name);
+}
+
+function isActiveLivePayload(payload) {
+  return isUsableLivePayload(payload) && !!payload.is_playing;
+}
+
+function activityScore(payload) {
+  return Number(payload.activity_at) || Number(payload.fetched_at) || 0;
+}
+
+function rememberSourceSticky(source, payload) {
+  if (!lastLiveBySource[source]) return;
+  lastLiveBySource[source] = { payload, at: Date.now() };
+}
+
+function clearSourceSticky(source) {
+  if (!lastLiveBySource[source]) return;
+  lastLiveBySource[source] = { payload: null, at: 0 };
+}
+
+function clearAllLiveSticky() {
+  clearSourceSticky("plex");
+  clearSourceSticky("audiobookshelf");
+  clearSourceSticky("spotify");
+}
+
+/**
+ * Resolve a polled payload into an active candidate (or null).
+ * Explicit idle clears sticky; miss/timeout may reuse last active briefly.
+ */
+function resolveActiveCandidate(source, raw) {
+  const miss = !raw || !!raw.error;
+  const idle = !!(raw && !raw.error && raw.playing === false);
+  if (isActiveLivePayload(raw)) {
+    rememberSourceSticky(source, raw);
+    return raw;
+  }
+  if (idle) {
+    clearSourceSticky(source);
+    return null;
+  }
+  const held = lastLiveBySource[source];
+  if (
+    miss &&
+    held &&
+    held.payload &&
+    isActiveLivePayload(held.payload) &&
+    Date.now() - held.at <= LIVE_CLIENT_STICKY_MS
+  ) {
+    return held.payload;
+  }
+  if (miss) clearSourceSticky(source);
+  return null;
 }
 
 function formatLiveMessage(payload, opts) {
@@ -1941,8 +2005,7 @@ function enterLastFmFallback() {
   liveTrackId = "";
   liveSnap = null;
   spotifyAsideKey = "";
-  lastAbsPayload = null;
-  lastAbsOkAt = 0;
+  clearAllLiveSticky();
   if (musicSource === "lastfm") return;
   musicSource = "lastfm";
   lastTrackIdentity = "";
@@ -1959,15 +2022,57 @@ function setLiveSnap(payload) {
   };
 }
 
-async function applyAbsPayload(payload) {
+async function applyPlexPayload(payload) {
   const track = payload.track;
   if (!track || !track.name) {
     enterLastFmFallback();
     return;
   }
 
-  lastAbsPayload = payload;
-  lastAbsOkAt = Date.now();
+  if (musicSource !== "plex") {
+    stopLastFmPolling();
+    musicSource = "plex";
+    liveTrackId = "";
+  }
+  startLiveProgressTimer();
+  setLiveSnap(payload);
+
+  const trackId = track.id || `${track.name}|${artistsLabel(track.artists)}`;
+  const trackChanged = trackId !== liveTrackId;
+  const hasCard =
+    nowPlayingContainer.find(".now-playing-card.plex-live").not(".error").length > 0;
+
+  const plexOpts = {
+    sourceClass: "plex-live",
+    cardClass: "plex-live",
+    statusPlaying: "Watching",
+    statusPaused: "Paused",
+    attribution: "Data from Plex",
+    linkable: false
+  };
+
+  if (hasCard && !trackChanged) {
+    patchLiveCardInPlace(payload, plexOpts);
+    nowPlayingContainer.find(".now-playing-plays, .now-playing-previous").prop("hidden", true).text("");
+    syncCardBackground(track.art_url || "");
+  } else {
+    liveTrackId = trackId;
+    lastTrackIdentity = `plex|${trackId}|${payload.is_playing ? 1 : 0}`;
+    displayMessage(formatLiveMessage(payload, plexOpts));
+    syncCardBackground(track.art_url || "");
+    document.dispatchEvent(new CustomEvent("now-playing:updated"));
+    document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
+  }
+
+  applyLiveProgressDom();
+}
+
+async function applyAbsPayload(payload) {
+  const track = payload.track;
+  if (!track || !track.name) {
+    enterLastFmFallback();
+    return;
+  }
 
   if (musicSource !== "audiobookshelf") {
     stopLastFmPolling();
@@ -2061,56 +2166,46 @@ async function applySpotifyPayload(payload) {
   applyLiveProgressDom();
 }
 
+async function applyLiveSourcePayload(source, payload) {
+  if (source === "plex") return applyPlexPayload(payload);
+  if (source === "audiobookshelf") return applyAbsPayload(payload);
+  if (source === "spotify") return applySpotifyPayload(payload);
+}
+
 async function tickLiveSources() {
-  const [abs, spotify] = await Promise.all([
+  const [plex, abs, spotify] = await Promise.all([
+    fetchPlexNowPlaying(),
     fetchAbsNowPlaying(),
     fetchSpotifyNowPlaying()
   ]);
 
-  let absPayload = abs;
-  const absMiss = !abs || !!abs.error;
-  const absIdle = !!(abs && !abs.error && abs.playing === false);
-  let absOk = isUsableLivePayload(absPayload) && !!absPayload.is_playing;
-  if (absOk) {
-    lastAbsPayload = absPayload;
-    lastAbsOkAt = Date.now();
-  } else if (absIdle) {
-    // Explicit idle (paused/stale/hidden) - do not sticky-hold.
-    lastAbsPayload = null;
-    lastAbsOkAt = 0;
-    absOk = false;
-  } else if (
-    absMiss &&
-    lastAbsPayload &&
-    lastAbsPayload.is_playing &&
-    Date.now() - lastAbsOkAt <= ABS_CLIENT_STICKY_MS
-  ) {
-    // Brief ABS miss/timeout only - keep last active book.
-    absPayload = lastAbsPayload;
-    absOk = true;
-  } else {
-    lastAbsPayload = null;
-    lastAbsOkAt = 0;
-    absOk = false;
-  }
+  const active = {
+    plex: resolveActiveCandidate("plex", plex),
+    audiobookshelf: resolveActiveCandidate("audiobookshelf", abs),
+    spotify: resolveActiveCandidate("spotify", spotify)
+  };
 
-  const spotOk = isUsableLivePayload(spotify);
-  const spotActive = spotOk && !!spotify.is_playing;
-
-  // ABS active > Spotify active > Spotify paused/present > Last.fm
-  // (ABS "paused"/stale openSessions are treated as idle.)
-  if (absOk) {
-    await applyAbsPayload(absPayload);
+  // Sticky: keep showing the current source while it remains active.
+  if (active[musicSource]) {
+    await applyLiveSourcePayload(musicSource, active[musicSource]);
     return;
   }
-  if (spotActive) {
+
+  // Else freshest among actives (no brand hierarchy).
+  const activeEntries = Object.entries(active).filter(([, p]) => p);
+  if (activeEntries.length) {
+    activeEntries.sort((a, b) => activityScore(b[1]) - activityScore(a[1]));
+    const [source, payload] = activeEntries[0];
+    await applyLiveSourcePayload(source, payload);
+    return;
+  }
+
+  // Spotify paused is the only paused live card we surface.
+  if (isUsableLivePayload(spotify) && !spotify.is_playing) {
     await applySpotifyPayload(spotify);
     return;
   }
-  if (spotOk) {
-    await applySpotifyPayload(spotify);
-    return;
-  }
+
   enterLastFmFallback();
 }
 
