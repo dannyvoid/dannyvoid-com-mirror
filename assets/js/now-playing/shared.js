@@ -11,7 +11,10 @@ export const nowPlayingContainer = $("#now-playing");
 export function displayMessage(message) {
   // Remount wipes .now-playing-card-bg washes - force the next sync to repaint.
   resetGradientStateFn();
-  nowPlayingContainer.html(message);
+  nowPlayingContainer
+    .removeAttr("aria-busy")
+    .removeAttr("aria-label")
+    .html(message);
 }
 
 export function displayError(message) {
