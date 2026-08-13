@@ -17,12 +17,6 @@ export function artistsLabel(artists) {
   return String(artists || "");
 }
 
-export function formatPreviousLine(previous) {
-  if (!previous || !previous.name) return "";
-  const who = artistsLabel(previous.artists);
-  return who ? `Last: ${who} - ${previous.name}` : `Last: ${previous.name}`;
-}
-
 export function computeLiveProgress() {
   if (!state.liveSnap) return { progress: 0, duration: 0, pct: 0 };
   const duration = Math.max(0, Number(state.liveSnap.duration_ms) || 0);
@@ -135,7 +129,6 @@ export function formatLiveMessage(payload, opts) {
                             </div>
                             <div class="spotify-progress-end">
                                 <span class="spotify-duration">${formatClock(duration)}</span>
-                                <div class="now-playing-previous" hidden></div>
                             </div>
                         </div>
                     </div>

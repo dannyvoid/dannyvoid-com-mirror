@@ -12,7 +12,6 @@ const { nowPlayingContainer, displayMessage, formatPlayCount, fetchJsonWithTimeo
 const { syncCardBackground } = art;
 const {
   artistsLabel,
-  formatPreviousLine,
   formatLiveMessage,
   patchLiveCardInPlace,
   applyLiveProgressDom
@@ -51,22 +50,12 @@ export function activityAt(payload) {
   return Number(payload.activity_at) || Number(payload.fetched_at) || 0;
 }
 
-async function enrichSpotifyAside(track, previous, opts) {
+async function enrichSpotifyAside(track, opts) {
   const options = opts || {};
   const artist = artistsLabel(track && track.artists);
   const name = track && track.name;
   const key = `${artist}|${name}`;
   state.setSpotifyAsideKey(key);
-
-  if (!options.playsOnly) {
-    const prevLabel = formatPreviousLine(previous);
-    const $prev = nowPlayingContainer.find(".now-playing-previous").first();
-    if ($prev.length) {
-      if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
-      else $prev.text("").prop("hidden", true);
-    }
-    document.dispatchEvent(new CustomEvent("now-playing:updated"));
-  }
 
   const $plays = nowPlayingContainer
     .find(".spotify-progress-center .now-playing-plays, .now-playing-plays")
@@ -115,15 +104,8 @@ export async function apply(payload, ctx) {
       cardClass: "spotify-live",
       attribution: "Data from Spotify"
     });
-    const prevLabel = formatPreviousLine(payload.previous);
-    const $prev = nowPlayingContainer.find(".now-playing-previous").first();
-    if ($prev.length) {
-      if (prevLabel) $prev.text(prevLabel).prop("hidden", false);
-      else $prev.text("").prop("hidden", true);
-    }
     syncCardBackground(track.art_url || "");
-    enrichSpotifyAside(track, payload.previous, {
-      playsOnly: true,
+    enrichSpotifyAside(track, {
       retryPlays: true
     });
   } else {
@@ -138,7 +120,7 @@ export async function apply(payload, ctx) {
     syncCardBackground(track.art_url || "");
     document.dispatchEvent(new CustomEvent("now-playing:updated"));
     document.dispatchEvent(new CustomEvent("now-playing:art-updated"));
-    enrichSpotifyAside(track, payload.previous);
+    enrichSpotifyAside(track);
   }
 
   applyLiveProgressDom();

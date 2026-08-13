@@ -1089,8 +1089,7 @@ img {
 .track-album[hidden],
 .now-playing-time[hidden],
 .now-playing-plays[hidden],
-.now-playing-lifetime[hidden],
-.now-playing-previous[hidden] {
+.now-playing-lifetime[hidden] {
   display: none !important;
 }
 
@@ -1129,17 +1128,6 @@ img {
   opacity: 0.85;
   line-height: 1.2;
   white-space: nowrap;
-}
-
-.now-playing-previous {
-  text-transform: none;
-  letter-spacing: 0.04em;
-  white-space: normal;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
 
 .spotify-progress {
@@ -1211,14 +1199,9 @@ img {
 }
 
 /* Spotify progress chrome; shared card type is already compact above. */
-.now-playing-card.spotify-live .spotify-progress-center .now-playing-plays,
-.now-playing-card.spotify-live .spotify-progress-end .now-playing-previous {
+.now-playing-card.spotify-live .spotify-progress-center .now-playing-plays {
   font-size: 0.6875rem;
   line-height: 1.2;
-}
-
-.now-playing-card.spotify-live .now-playing-previous {
-  -webkit-line-clamp: 1;
 }
 
 .now-playing-card.spotify-live.paused .spotify-progress-fill {

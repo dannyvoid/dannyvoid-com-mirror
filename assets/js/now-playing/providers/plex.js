@@ -67,10 +67,7 @@ export async function apply(payload, ctx) {
 
   if (hasCard && !trackChanged) {
     patchLiveCardInPlace(payload, plexOpts);
-    nowPlayingContainer
-      .find(".now-playing-plays, .now-playing-previous")
-      .prop("hidden", true)
-      .text("");
+    nowPlayingContainer.find(".now-playing-plays").prop("hidden", true).text("");
     syncCardBackground(track.art_url || "");
   } else {
     state.setLiveTrackId(trackId);

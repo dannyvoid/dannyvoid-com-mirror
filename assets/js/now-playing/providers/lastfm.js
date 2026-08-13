@@ -150,7 +150,7 @@ export function patchCardPlays(playsLabel) {
 }
 
 export function patchCardLifetime(lifetimeLabel) {
-  // Live origin cards reuse the footer slot for "Last: â€¦" - never write account scrobbles there
+  // Live origin cards hide lifetime - never write account scrobbles into that slot
   if (state.isOriginLiveSource()) return;
   const $lifetime = nowPlayingContainer.find(".now-playing-lifetime");
   if (!$lifetime.length) return;
