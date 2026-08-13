@@ -157,13 +157,8 @@ async function tickLiveSources() {
     spotify: resolveActiveCandidate("spotify", spotifyPayload)
   };
 
-  // Sticky: keep showing the current source while it remains active.
-  if (active[state.activeSource]) {
-    await applyLiveSourcePayload(state.activeSource, active[state.activeSource]);
-    return;
-  }
-
-  // Else freshest among actives (no brand hierarchy).
+  // Freshest active source wins. Do not hard-stick to the current card while
+  // another origin is clearly newer (e.g. paused ABS still "active" + live Plex).
   const activeEntries = Object.entries(active).filter(([, p]) => p);
   if (activeEntries.length) {
     activeEntries.sort((a, b) => {
@@ -173,8 +168,26 @@ async function tickLiveSources() {
       const scoreB = providerB ? providerB.activityAt(b[1]) : 0;
       return scoreB - scoreA;
     });
-    const [source, payload] = activeEntries[0];
-    await applyLiveSourcePayload(source, payload);
+
+    const [freshestSource, freshestPayload] = activeEntries[0];
+    const currentPayload = active[state.activeSource];
+    if (currentPayload && state.activeSource) {
+      const currentProvider = providers.find((p) => p.id === state.activeSource);
+      const freshestProvider = providers.find((p) => p.id === freshestSource);
+      const currentScore = currentProvider
+        ? currentProvider.activityAt(currentPayload)
+        : 0;
+      const freshestScore = freshestProvider
+        ? freshestProvider.activityAt(freshestPayload)
+        : 0;
+      // Soft stick: keep the current card unless another source leads by >2s.
+      if (freshestScore <= currentScore + 2000) {
+        await applyLiveSourcePayload(state.activeSource, currentPayload);
+        return;
+      }
+    }
+
+    await applyLiveSourcePayload(freshestSource, freshestPayload);
     return;
   }
 
