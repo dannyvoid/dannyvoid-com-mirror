@@ -256,7 +256,8 @@ function getLastFmImageUrl(track) {
 function normalizeMusicText(str) {
   return String(str || "")
     .toLowerCase()
-    .replace(/['â€™]/g, "")
+    // Strip ASCII + curly apostrophes (U+2018/U+2019)
+    .replace(/['\u2018\u2019]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
