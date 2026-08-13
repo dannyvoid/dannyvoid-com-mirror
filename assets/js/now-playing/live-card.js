@@ -54,7 +54,7 @@ export function formatLiveMessage(payload, opts) {
   const track = payload.track || {};
   const songName = track.name || "";
   const artistName = artistsLabel(track.artists);
-  const albumName = track.album || "";
+  const albumName = track.chapter || track.album || "";
   const albumArt = track.art_url || "";
   const trackUrl = linkable ? track.url || fallbackUrl : "";
   const isPlaying = !!payload.is_playing;
@@ -154,7 +154,7 @@ export function patchLiveCardInPlace(payload, opts) {
   const track = payload.track || {};
   const songName = track.name || "";
   const artistName = artistsLabel(track.artists);
-  const albumName = track.album || "";
+  const albumName = track.chapter || track.album || "";
   const isPlaying = !!payload.is_playing;
 
   $card.toggleClass("playing", isPlaying).toggleClass("paused", !isPlaying);
