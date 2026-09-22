@@ -658,6 +658,17 @@ img {
   font-size: 1.25rem;
 }
 
+.meta-value a {
+  color: inherit;
+  border-bottom: none;
+  font-weight: inherit;
+}
+
+.meta-value a:hover {
+  color: var(--color-accent);
+  border-bottom: none;
+}
+
 .hero-statement {
   position: sticky;
   top: 8rem;
