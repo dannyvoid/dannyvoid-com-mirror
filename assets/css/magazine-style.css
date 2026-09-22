@@ -2166,6 +2166,16 @@ a.contact-tile:hover .tile-action {
   text-align: right;
 }
 
+.footer-copyright a {
+  color: inherit;
+  border-bottom: none;
+}
+
+.footer-copyright a:hover {
+  color: var(--color-accent);
+  border-bottom: none;
+}
+
 /* ============================================
    RESPONSIVE
    ============================================ */
