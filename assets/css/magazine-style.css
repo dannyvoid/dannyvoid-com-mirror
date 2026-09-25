@@ -1507,6 +1507,28 @@ img {
   color: var(--color-gray-400);
 }
 
+/* Latest Venture - single wide studio frame, links out instead of lightbox */
+.venture-media {
+  margin: 2.5rem 0 0;
+  width: 100%;
+}
+
+.venture-media .portfolio-item {
+  display: block;
+  aspect-ratio: 2800 / 1415;
+  width: 100%;
+  background: var(--color-black);
+}
+
+.venture-media .portfolio-item:hover .portfolio-item-media,
+.venture-media .portfolio-item.is-dithering .portfolio-item-media {
+  transform: none;
+}
+
+.venture-media + .focus-product-caption {
+  margin-top: 0;
+}
+
 .focus-container .section-header {
   margin-bottom: 2.5rem;
 }

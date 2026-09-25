@@ -1122,14 +1122,14 @@
 
   // Initialize focus product gallery
   function initFocusProducts() {
-    document.querySelectorAll('.focus-product-grid .portfolio-item').forEach(initPortfolioDither);
+    document.querySelectorAll('.focus-product-grid .portfolio-item, .venture-media .portfolio-item').forEach(initPortfolioDither);
   }
 
   initFocusProducts();
 
   // Observe portfolio items after generation
   setTimeout(() => {
-    document.querySelectorAll('#portfolio-grid .portfolio-item, .focus-product-grid .portfolio-item').forEach(el => {
+    document.querySelectorAll('#portfolio-grid .portfolio-item, .focus-product-grid .portfolio-item, .venture-media .portfolio-item').forEach(el => {
       observer.observe(el);
     });
   }, 0);
