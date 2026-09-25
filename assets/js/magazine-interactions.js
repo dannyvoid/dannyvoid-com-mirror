@@ -758,9 +758,12 @@
     if (!ditherEnabled) return;
 
     const media = item.querySelector('.portfolio-item-media');
-    const img = item.querySelector('img');
+    // Source may be a still <img> or a looping <video> (sampled live while dithering)
+    const img = item.querySelector('video, img');
     const canvas = item.querySelector('.portfolio-dither-canvas');
     if (!media || !img || !canvas) return;
+    const isVideo = img.tagName === 'VIDEO';
+    const loadEvent = isVideo ? 'loadeddata' : 'load';
 
     const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
     const offscreen = document.createElement('canvas');
@@ -783,7 +786,7 @@
     const ditherFrameSkip = 2;  // run dither every Nth frame once settled
 
     function markReady() {
-      if (!img.naturalWidth) return false;
+      if (isVideo ? img.readyState < 2 || !img.videoWidth : !img.naturalWidth) return false;
       imageReady = true;
       needsBaseRebuild = true;
       return true;
@@ -807,10 +810,10 @@
               resolve(false);
             };
             const cleanup = () => {
-              img.removeEventListener('load', onLoad);
+              img.removeEventListener(loadEvent, onLoad);
               img.removeEventListener('error', onError);
             };
-            img.addEventListener('load', onLoad, { once: true });
+            img.addEventListener(loadEvent, onLoad, { once: true });
             img.addEventListener('error', onError, { once: true });
             if (img.complete) onLoad();
           });
@@ -820,7 +823,7 @@
       });
     }
 
-    img.addEventListener('load', markReady);
+    img.addEventListener(loadEvent, markReady);
     img.addEventListener('error', () => {
       imageReady = false;
       basePixels = null;
@@ -850,6 +853,12 @@
       needsBaseRebuild = false;
     }
 
+    // Video frames change under the dither, so resample the current frame
+    function resampleVideoFrame() {
+      offCtx.drawImage(img, 0, 0, renderW, renderH);
+      basePixels.set(offCtx.getImageData(0, 0, renderW, renderH).data);
+    }
+
     function render(time, forceDither) {
       if (!imageReady && !markReady()) return;
 
@@ -862,6 +871,7 @@
         const shouldDither = forceDither || !settled || (frameCount % ditherFrameSkip === 0);
 
         if (shouldDither) {
+          if (isVideo) resampleVideoFrame();
           ditherImageDataFast(
             workImageData.data,
             basePixels,
@@ -1124,6 +1134,25 @@
   function initFocusProducts() {
     document.querySelectorAll('.focus-product-grid .portfolio-item, .venture-media .portfolio-item').forEach(initPortfolioDither);
   }
+
+  // Looping venture clips: play only while on screen, hold the poster for reduced motion
+  function initVentureVideos() {
+    const videos = document.querySelectorAll('.venture-media video');
+    if (!videos.length || prefersReducedMotion) return;
+    const videoObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const playing = entry.target.play();
+          if (playing && playing.catch) playing.catch(() => {});
+        } else {
+          entry.target.pause();
+        }
+      });
+    }, { threshold: 0.1 });
+    videos.forEach((video) => videoObserver.observe(video));
+  }
+
+  initVentureVideos();
 
   initFocusProducts();
 

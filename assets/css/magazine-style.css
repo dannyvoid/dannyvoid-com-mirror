@@ -1515,7 +1515,7 @@ img {
 
 .venture-media .portfolio-item {
   display: block;
-  aspect-ratio: 2800 / 1415;
+  aspect-ratio: 2800 / 1416;
   width: 100%;
   background: var(--color-black);
 }
@@ -1877,6 +1877,7 @@ a.contribution-item:hover {
 }
 
 .portfolio-item img,
+.portfolio-item video,
 .portfolio-dither-canvas {
   position: absolute;
   inset: 0;
@@ -1885,7 +1886,8 @@ a.contribution-item:hover {
   object-fit: cover;
 }
 
-.portfolio-item img {
+.portfolio-item img,
+.portfolio-item video {
   z-index: 0;
 }
 
