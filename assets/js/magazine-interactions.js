@@ -1173,7 +1173,8 @@
     const items = Array.from(galleryRoot.querySelectorAll('.portfolio-item'));
     const gallery = items.map((item) => {
       const img = item.querySelector('img');
-      return img ? { src: img.currentSrc || img.src, alt: img.alt || '' } : null;
+      // data-full points at the largest file when the tile itself loads a smaller srcset entry
+      return img ? { src: item.dataset.full || img.currentSrc || img.src, alt: img.alt || '' } : null;
     }).filter(Boolean);
     const startIndex = Math.max(0, items.indexOf(galleryItem));
     if (gallery.length) {

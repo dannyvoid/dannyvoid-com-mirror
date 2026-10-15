@@ -1507,6 +1507,107 @@ img {
   color: var(--color-gray-400);
 }
 
+/* Dither Boy showcase - one bento row per app theme, lead shot plus two stacked */
+.focus-product-grid.focus-showcase {
+  display: flex;
+  flex-direction: column;
+  gap: 3.5rem;
+}
+
+.focus-showcase-group {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.focus-showcase-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+}
+
+.focus-showcase-label {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.focus-showcase-note {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  color: var(--color-gray-500);
+  margin: 0;
+}
+
+.focus-showcase-tiles {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  gap: 1.25rem;
+}
+
+.focus-product-grid .focus-showcase-tiles .portfolio-item {
+  aspect-ratio: auto;
+  min-height: 0;
+}
+
+.focus-product-grid .focus-showcase-tiles .focus-product-item--lead {
+  grid-row: 1 / span 2;
+  aspect-ratio: 16 / 9;
+}
+
+.focus-showcase-group--flip .focus-showcase-tiles {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.focus-product-grid .focus-showcase-group--flip .focus-product-item--lead {
+  grid-column: 2;
+}
+
+.focus-product-grid .focus-showcase-tiles .portfolio-item img,
+.focus-product-grid .focus-showcase-tiles .portfolio-item .portfolio-dither-canvas {
+  object-fit: cover;
+}
+
+.focus-product-index {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 2;
+  padding: 0.3rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--color-black);
+  background: var(--color-white);
+  transition: background-color 0.3s ease;
+}
+
+.portfolio-item:hover .focus-product-index {
+  background: var(--color-accent);
+}
+
+.focus-showcase-captions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem 2rem;
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+}
+
+.focus-showcase-index {
+  color: var(--color-white);
+  margin-right: 0.35em;
+}
+
 /* Latest Venture - single wide studio frame, links out instead of lightbox */
 .venture-media {
   margin: 2.5rem 0 0;
@@ -2361,6 +2462,28 @@ html.is-narrow-layout .now-playing-track {
   .focus-product-captions {
     grid-template-columns: 1fr;
     gap: 0.75rem;
+  }
+
+  .focus-product-grid.focus-showcase {
+    gap: 2.5rem;
+  }
+
+  .focus-showcase-tiles,
+  .focus-showcase-group--flip .focus-showcase-tiles {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .focus-product-grid .focus-showcase-tiles .portfolio-item,
+  .focus-product-grid .focus-showcase-tiles .focus-product-item--lead {
+    grid-row: auto;
+    grid-column: auto;
+    aspect-ratio: 16 / 9;
+  }
+
+  .focus-showcase-captions {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
   }
   
   .contributions-list {
